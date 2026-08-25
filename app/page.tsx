@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type View = "dashboard" | "import" | "mapping" | "export";
 type Status = "Forte" | "Provável" | "Revisar" | "Sem código";
@@ -17,6 +17,17 @@ type MatchRow = {
   evidence: string[];
 };
 
+type PopupKind = "prices" | "demands" | "brands";
+type MarketOffer = {
+  competitor: string;
+  brand: string;
+  price: number;
+  quantity: number;
+  unit: string;
+  packSize: number | null;
+  baseUnit: string;
+};
+
 const initialRows: MatchRow[] = [
   { id: 1, description: "LUVA CIRÚRGICA 6.5 EST PO C/01 PAR", repetitions: 7, candidate: "32025", product: "LUVA CIRÚRGICA EST C/ PÓ 6,5 PAR", confidence: 83.2, status: "Forte", brand: "MEDIX", evidence: ["Tamanho 6,5 compatível", "Apresentação em par", "Descrição encontrada em 7 respostas"] },
   { id: 2, description: "LUVA NITRÍLICA M SEM PO AZUL C/100", repetitions: 19, candidate: "19313", product: "LUVA NITRÍLICA SEM PÓ AZUL TAM M C/100", confidence: 77.9, status: "Provável", brand: "DESCARPACK", evidence: ["Material nitrílico", "Tamanho M e caixa com 100", "Marca não informada no mercado"] },
@@ -25,6 +36,38 @@ const initialRows: MatchRow[] = [
   { id: 5, description: "SERINGA DESC 10ML S/AGULHA BICO SLIP", repetitions: 14, candidate: "10584", product: "SERINGA DESCARTÁVEL 10ML BICO SLIP SEM AGULHA", confidence: 81.4, status: "Forte", brand: "SR", evidence: ["Volume 10 ml", "Bico slip", "Sem agulha"] },
   { id: 6, description: "EQUIPO MACROGOTAS C/INJETOR LATERAL", repetitions: 8, candidate: "14772", product: "EQUIPO MACROGOTAS COM INJETOR LATERAL", confidence: 75.6, status: "Provável", brand: "LABOR IMPORT", evidence: ["Tipo macrogotas", "Injetor lateral compatível", "Fabricante não informado"] },
 ];
+
+const marketOffers: Record<number, MarketOffer[]> = {
+  1: [
+    { competitor: "Fornecedor A", brand: "MEDIX", price: 12.48, quantity: 12, unit: "CAIXA", packSize: 50, baseUnit: "PAR" },
+    { competitor: "Fornecedor B", brand: "DESCARPACK", price: 13.2, quantity: 250, unit: "PAR", packSize: 1, baseUnit: "PAR" },
+    { competitor: "Fornecedor C", brand: "NEW HAND", price: 15.9, quantity: 3, unit: "PACOTE", packSize: 10, baseUnit: "PAR" },
+    { competitor: "Fornecedor D", brand: "MEDIX", price: 12.95, quantity: 5, unit: "FARDO", packSize: null, baseUnit: "PAR" },
+  ],
+  2: [
+    { competitor: "Fornecedor A", brand: "MEDIX", price: 26.9, quantity: 18, unit: "CAIXA", packSize: 100, baseUnit: "UN" },
+    { competitor: "Fornecedor E", brand: "NUGARD", price: 24.7, quantity: 650, unit: "UN", packSize: 1, baseUnit: "UN" },
+    { competitor: "Fornecedor B", brand: "DESCARPACK", price: 28.35, quantity: 9, unit: "CAIXA", packSize: 100, baseUnit: "UN" },
+  ],
+  3: [
+    { competitor: "Fornecedor C", brand: "MEDIX", price: 8.4, quantity: 20, unit: "PAR", packSize: 1, baseUnit: "PAR" },
+    { competitor: "Fornecedor F", brand: "LEMGRUBER", price: 9.15, quantity: 4, unit: "CAIXA", packSize: null, baseUnit: "PAR" },
+  ],
+  4: [
+    { competitor: "Fornecedor G", brand: "ASTRAZENECA", price: 4380, quantity: 2, unit: "CAIXA", packSize: 60, baseUnit: "CÁPS" },
+    { competitor: "Fornecedor H", brand: "ASTRAZENECA", price: 4295, quantity: 120, unit: "CÁPS", packSize: 1, baseUnit: "CÁPS" },
+  ],
+  5: [
+    { competitor: "Fornecedor A", brand: "SR", price: 0.68, quantity: 10, unit: "CAIXA", packSize: 100, baseUnit: "UN" },
+    { competitor: "Fornecedor B", brand: "DESCARPACK", price: 0.74, quantity: 800, unit: "UN", packSize: 1, baseUnit: "UN" },
+    { competitor: "Fornecedor E", brand: "INJEX", price: 0.71, quantity: 4, unit: "PACOTE", packSize: 50, baseUnit: "UN" },
+  ],
+  6: [
+    { competitor: "Fornecedor D", brand: "LABOR IMPORT", price: 1.42, quantity: 420, unit: "UN", packSize: 1, baseUnit: "UN" },
+    { competitor: "Fornecedor B", brand: "DESCARPACK", price: 1.58, quantity: 5, unit: "CAIXA", packSize: 100, baseUnit: "UN" },
+    { competitor: "Fornecedor F", brand: "MEDSONDA", price: 1.36, quantity: 2, unit: "FARDO", packSize: null, baseUnit: "UN" },
+  ],
+};
 
 const statusClass: Record<Status, string> = { Forte: "status strong", Provável: "status probable", Revisar: "status review", "Sem código": "status missing" };
 const navItems: { id: View; label: string; description: string }[] = [
@@ -35,8 +78,14 @@ const navItems: { id: View; label: string; description: string }[] = [
 ];
 
 function downloadCsv(rows: MatchRow[], approved: number[]) {
-  const header = ["descricao_limpa", "repeticoes", "codigo_sogamax", "produto_sogamax", "confianca", "status_aprovacao"];
-  const body = rows.map((row) => [row.description, row.repetitions, approved.includes(row.id) ? row.candidate : "", approved.includes(row.id) ? row.product : "", row.confidence.toFixed(1).replace(".", ","), approved.includes(row.id) ? "APROVADO" : "PENDENTE"]);
+  const header = ["descricao_limpa", "repeticoes", "codigo_sogamax", "produto_sogamax", "confianca", "preco_minimo", "preco_medio", "demanda_padronizada", "unidade_base", "marcas_concorrentes", "status_aprovacao"];
+  const body = rows.map((row) => {
+    const offers = marketOffers[row.id] ?? [];
+    const prices = offers.map((offer) => offer.price);
+    const convertedDemand = offers.reduce((total, offer) => total + (offer.packSize === null ? 0 : offer.quantity * offer.packSize), 0);
+    const brands = [...new Set(offers.map((offer) => offer.brand))].join(" | ");
+    return [row.description, row.repetitions, approved.includes(row.id) ? row.candidate : "", approved.includes(row.id) ? row.product : "", row.confidence.toFixed(1).replace(".", ","), Math.min(...prices).toFixed(2).replace(".", ","), (prices.reduce((sum, price) => sum + price, 0) / prices.length).toFixed(2).replace(".", ","), convertedDemand, offers[0]?.baseUnit ?? "", brands, approved.includes(row.id) ? "APROVADO" : "PENDENTE"];
+  });
   const csv = [header, ...body].map((line) => line.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(";")).join("\n");
   const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -58,14 +107,23 @@ export default function Home() {
   const [stockFile, setStockFile] = useState("Estoque Hospitalar Atualizado.xls");
   const [processing, setProcessing] = useState(false);
   const [processed, setProcessed] = useState(true);
+  const [activePopup, setActivePopup] = useState<PopupKind | null>(null);
   const marketInput = useRef<HTMLInputElement>(null);
   const stockInput = useRef<HTMLInputElement>(null);
 
   const selected = initialRows.find((row) => row.id === selectedId) ?? initialRows[0];
+  const selectedOffers = marketOffers[selected.id] ?? [];
   const filteredRows = useMemo(() => initialRows.filter((row) => {
     const matchesText = `${row.description} ${row.candidate} ${row.product}`.toLowerCase().includes(search.toLowerCase());
     return matchesText && (filter === "Todos" || row.status === filter);
   }), [search, filter]);
+
+  useEffect(() => {
+    if (!activePopup) return;
+    const closeOnEscape = (event: KeyboardEvent) => event.key === "Escape" && setActivePopup(null);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [activePopup]);
 
   function flash(message: string) {
     setToast(message);
@@ -161,6 +219,14 @@ export default function Home() {
                 <span className="eyebrow">DESCRIÇÃO DO MERCADO</span><h3>{selected.description}</h3><div className="arrow-down">↓</div>
                 <span className="eyebrow">CANDIDATO SOGAMAX</span><div className="candidate-code">{selected.candidate === "—" ? "Sem candidato seguro" : `Código ${selected.candidate}`}</div><h4>{selected.product}</h4>
                 <div className="candidate-meta"><span>Marca</span><strong>{selected.brand}</strong><span>Repetições</span><strong>{selected.repetitions} linhas</strong></div>
+                <div className="market-actions">
+                  <span className="eyebrow">DETALHES DO MERCADO</span>
+                  <div className="market-action-grid">
+                    <button onClick={() => setActivePopup("prices")}><span className="market-action-icon">R$</span><strong>Preços</strong><small>{selectedOffers.length} concorrentes</small></button>
+                    <button onClick={() => setActivePopup("demands")}><span className="market-action-icon">Σ</span><strong>Demanda</strong><small>unidades tratadas</small></button>
+                    <button onClick={() => setActivePopup("brands")}><span className="market-action-icon">M</span><strong>Marcas</strong><small>{new Set(selectedOffers.map((offer) => offer.brand)).size} encontradas</small></button>
+                  </div>
+                </div>
                 <div className="evidence"><span className="eyebrow">EVIDÊNCIAS</span>{selected.evidence.map((evidence) => <p key={evidence}><i>✓</i>{evidence}</p>)}</div>
                 <div className="decision-actions"><button className="primary" onClick={approve} disabled={approved.includes(selected.id)}>{approved.includes(selected.id) ? "Código aprovado ✓" : "Aprovar código"}</button><button className="secondary" onClick={() => flash("Modo de correção aberto para busca manual no estoque.")}>Corrigir vínculo</button></div>
                 <small className="security-copy">A aprovação será registrada para auditoria e reutilização futura.</small>
@@ -180,7 +246,58 @@ export default function Home() {
         )}
       </section>
       {toast && <div className="toast" role="status"><span>✓</span>{toast}</div>}
+      {activePopup && <MarketPopup kind={activePopup} row={selected} offers={selectedOffers} onChange={setActivePopup} onClose={() => setActivePopup(null)} />}
     </main>
+  );
+}
+
+function MarketPopup({ kind, row, offers, onChange, onClose }: { kind: PopupKind; row: MatchRow; offers: MarketOffer[]; onChange: (kind: PopupKind) => void; onClose: () => void }) {
+  const prices = offers.map((offer) => offer.price);
+  const minimum = Math.min(...prices);
+  const maximum = Math.max(...prices);
+  const average = prices.reduce((sum, price) => sum + price, 0) / prices.length;
+  const converted = offers.filter((offer) => offer.packSize !== null);
+  const pending = offers.filter((offer) => offer.packSize === null);
+  const totalDemand = converted.reduce((sum, offer) => sum + offer.quantity * (offer.packSize ?? 0), 0);
+  const brands = [...new Set(offers.map((offer) => offer.brand))].map((brand) => {
+    const brandOffers = offers.filter((offer) => offer.brand === brand);
+    const normalizedDemand = brandOffers.reduce((sum, offer) => sum + (offer.packSize === null ? 0 : offer.quantity * offer.packSize), 0);
+    return { brand, offers: brandOffers.length, average: brandOffers.reduce((sum, offer) => sum + offer.price, 0) / brandOffers.length, normalizedDemand };
+  });
+  const money = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="market-modal" role="dialog" aria-modal="true" aria-labelledby="market-modal-title">
+        <header className="modal-header">
+          <div><span className="eyebrow">VISÃO POR PRODUTO</span><h2 id="market-modal-title">{row.description}</h2><p>{row.candidate === "—" ? "Sem código Sogamax aprovado" : `Candidato Sogamax ${row.candidate}`} · Dados demonstrativos para validação do modelo</p></div>
+          <button className="modal-close" onClick={onClose} aria-label="Fechar pop-up">×</button>
+        </header>
+        <div className="modal-tabs" role="tablist" aria-label="Informações do mercado">
+          <button className={kind === "prices" ? "active" : ""} onClick={() => onChange("prices")}>Preços</button>
+          <button className={kind === "demands" ? "active" : ""} onClick={() => onChange("demands")}>Demanda padronizada</button>
+          <button className={kind === "brands" ? "active" : ""} onClick={() => onChange("brands")}>Marcas</button>
+        </div>
+
+        {kind === "prices" && <div className="modal-content">
+          <div className="modal-kpis"><div><span>Menor preço</span><strong>{money(minimum)}</strong></div><div><span>Preço médio</span><strong>{money(average)}</strong></div><div><span>Maior preço</span><strong>{money(maximum)}</strong></div><div><span>Cotações</span><strong>{offers.length}</strong></div></div>
+          <div className="popup-table-wrap"><table className="popup-table"><thead><tr><th>Concorrente</th><th>Marca</th><th>Apresentação</th><th>Preço cotado</th><th>Comparação</th></tr></thead><tbody>{[...offers].sort((a, b) => a.price - b.price).map((offer, index) => <tr key={`${offer.competitor}-${offer.price}`}><td><strong>{offer.competitor}</strong></td><td>{offer.brand}</td><td>{offer.unit}{offer.packSize && offer.packSize > 1 ? ` C/${offer.packSize}` : ""}</td><td><strong>{money(offer.price)}</strong></td><td>{index === 0 ? <span className="best-price">Menor preço</span> : <span className="price-delta">+{((offer.price / minimum - 1) * 100).toFixed(1).replace(".", ",")}%</span>}</td></tr>)}</tbody></table></div>
+          <div className="modal-note">Os preços permanecem separados por concorrente e apresentação. A ferramenta não mistura valores de embalagens diferentes sem identificar a unidade.</div>
+        </div>}
+
+        {kind === "demands" && <div className="modal-content">
+          <div className="modal-kpis"><div><span>Demanda convertida</span><strong>{totalDemand.toLocaleString("pt-BR")} {offers[0]?.baseUnit}</strong></div><div><span>Registros convertidos</span><strong>{converted.length}</strong></div><div><span>Aguardando regra</span><strong>{pending.length}</strong></div><div><span>Unidade-base</span><strong>{offers[0]?.baseUnit}</strong></div></div>
+          <div className="popup-table-wrap"><table className="popup-table demand-table"><thead><tr><th>Concorrente</th><th>Demanda original</th><th>Fator aplicado</th><th>Demanda padronizada</th><th>Situação</th></tr></thead><tbody>{offers.map((offer) => <tr key={`${offer.competitor}-${offer.quantity}`}><td><strong>{offer.competitor}</strong></td><td>{offer.quantity.toLocaleString("pt-BR")} {offer.unit}</td><td>{offer.packSize === null ? "Não definido" : offer.packSize === 1 ? "1 × 1" : `1 ${offer.unit} = ${offer.packSize} ${offer.baseUnit}`}</td><td><strong>{offer.packSize === null ? "—" : `${(offer.quantity * offer.packSize).toLocaleString("pt-BR")} ${offer.baseUnit}`}</strong></td><td>{offer.packSize === null ? <span className="conversion pending">Validar conversão</span> : <span className="conversion ok">Convertido</span>}</td></tr>)}</tbody></table></div>
+          {pending.length > 0 && <div className="conversion-alert"><strong>{pending.length} registro(s) fora do total.</strong><span>As quantidades em unidades sem fator confirmado não são somadas, evitando uma demanda incorreta.</span></div>}
+        </div>}
+
+        {kind === "brands" && <div className="modal-content">
+          <div className="brand-summary"><div><span className="eyebrow">MARCAS ENCONTRADAS</span><strong>{brands.length}</strong><p>Marcas distintas cotadas para esta mesma descrição de mercado.</p></div><div className="brand-ring" style={{ "--brand-count": brands.length } as React.CSSProperties}><span>{brands.length}</span><small>marcas</small></div></div>
+          <div className="brand-grid">{brands.map((brand, index) => <article key={brand.brand}><div className="brand-rank">0{index + 1}</div><div><h3>{brand.brand}</h3><p>{brand.offers} concorrente(s) oferecendo esta marca</p></div><dl><div><dt>Preço médio</dt><dd>{money(brand.average)}</dd></div><div><dt>Demanda convertida</dt><dd>{brand.normalizedDemand.toLocaleString("pt-BR")} {offers[0]?.baseUnit}</dd></div></dl></article>)}</div>
+          <div className="modal-note">Uma mesma descrição pode receber marcas diferentes. Por isso, a marca é exibida como visão de mercado e não substitui automaticamente a marca do cadastro Sogamax.</div>
+        </div>}
+      </section>
+    </div>
   );
 }
 
