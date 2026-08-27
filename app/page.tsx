@@ -1,23 +1,23 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import sogamaxDescriptions from "./sogamax-base.json";
 
-type View = "dashboard" | "import" | "mapping" | "export";
-type Status = "Forte" | "Provável" | "Revisar" | "Sem código";
+type View = "dashboard" | "schedule" | "validation" | "export";
+type MatchStatus = "Padronizado" | "Provável" | "Revisar";
+type PopupKind = "prices" | "demands" | "brands";
+type FileState = "ready" | "duplicate" | "old";
 
-type MatchRow = {
+type DescriptionRow = {
   id: number;
-  description: string;
+  marketDescription: string;
+  standardDescription: string;
   repetitions: number;
-  candidate: string;
-  product: string;
   confidence: number;
-  status: Status;
-  brand: string;
+  status: MatchStatus;
   evidence: string[];
 };
 
-type PopupKind = "prices" | "demands" | "brands";
 type MarketOffer = {
   competitor: string;
   brand: string;
@@ -28,279 +28,210 @@ type MarketOffer = {
   baseUnit: string;
 };
 
-const initialRows: MatchRow[] = [
-  { id: 1, description: "LUVA CIRÚRGICA 6.5 EST PO C/01 PAR", repetitions: 7, candidate: "32025", product: "LUVA CIRÚRGICA EST C/ PÓ 6,5 PAR", confidence: 83.2, status: "Forte", brand: "MEDIX", evidence: ["Tamanho 6,5 compatível", "Apresentação em par", "Descrição encontrada em 7 respostas"] },
-  { id: 2, description: "LUVA NITRÍLICA M SEM PO AZUL C/100", repetitions: 19, candidate: "19313", product: "LUVA NITRÍLICA SEM PÓ AZUL TAM M C/100", confidence: 77.9, status: "Provável", brand: "DESCARPACK", evidence: ["Material nitrílico", "Tamanho M e caixa com 100", "Marca não informada no mercado"] },
-  { id: 3, description: "LUVA 7.0", repetitions: 11, candidate: "—", product: "Candidato insuficiente", confidence: 65.5, status: "Revisar", brand: "—", evidence: ["Descrição muito curta", "Falta tipo de luva", "Falta apresentação"] },
-  { id: 4, description: "ACALABRUTINIBE 100MG CAPS", repetitions: 3, candidate: "—", product: "Nenhum produto seguro no estoque hospitalar", confidence: 47.1, status: "Sem código", brand: "—", evidence: ["Princípio ativo sem equivalente seguro", "Confiança abaixo do limite", "Requer análise do cadastro"] },
-  { id: 5, description: "SERINGA DESC 10ML S/AGULHA BICO SLIP", repetitions: 14, candidate: "10584", product: "SERINGA DESCARTÁVEL 10ML BICO SLIP SEM AGULHA", confidence: 81.4, status: "Forte", brand: "SR", evidence: ["Volume 10 ml", "Bico slip", "Sem agulha"] },
-  { id: 6, description: "EQUIPO MACROGOTAS C/INJETOR LATERAL", repetitions: 8, candidate: "14772", product: "EQUIPO MACROGOTAS COM INJETOR LATERAL", confidence: 75.6, status: "Provável", brand: "LABOR IMPORT", evidence: ["Tipo macrogotas", "Injetor lateral compatível", "Fabricante não informado"] },
+type ProductData = { sogamaxPrice: number; offers: MarketOffer[] };
+
+const rows: DescriptionRow[] = [
+  { id: 1, marketDescription: "ABAIXADOR LINGUA MADEIRA PCT 100 UND", standardDescription: "ABAIXADOR DE LINGUA EM MADEIRA C/100", repetitions: 14, confidence: 96.8, status: "Padronizado", evidence: ["Termos principais equivalentes", "Apresentação C/100 preservada", "Descrição localizada na base Sogamax"] },
+  { id: 2, marketDescription: "ABSORVENTE GERIATRICO UNISSEX TAM UNICO 20UN", standardDescription: "ABSORVENTE GERIATRICO TAMANHO ÚNICO UNISSEX C/20", repetitions: 9, confidence: 94.1, status: "Padronizado", evidence: ["Uso geriátrico e unissex", "Tamanho único compatível", "Quantidade C/20 confirmada"] },
+  { id: 3, marketDescription: "ACEBROFILINA 25 MG 5 ML XAROPE FR 120 ML", standardDescription: "ACEBROFILINA 25MG/5ML XPE 120ML", repetitions: 11, confidence: 98.2, status: "Padronizado", evidence: ["Concentração 25MG/5ML", "Forma xarope", "Volume 120ML"] },
+  { id: 4, marketDescription: "ACEBROFILINA INFANTIL XAROPE 120ML", standardDescription: "ACEBROFILINA XPE INF 120ML", repetitions: 7, confidence: 89.4, status: "Provável", evidence: ["Medicamento e volume compatíveis", "INF interpretado como infantil", "Concentração não informada no mercado"] },
+  { id: 5, marketDescription: "AAS 100MG COMPRIMIDO", standardDescription: "ACIDO ACETILSALICILICO 100MG COMP", repetitions: 18, confidence: 86.7, status: "Provável", evidence: ["AAS reconhecido como abreviação", "Dosagem 100MG compatível", "Forma comprimido compatível"] },
+  { id: 6, marketDescription: "AGUA DESTILADA P/ INJECAO 10 ML AMP", standardDescription: "AGUA PARA INJECAO AMP 10ML", repetitions: 22, confidence: 92.5, status: "Padronizado", evidence: ["Finalidade injetável", "Ampola de 10ML", "Variação textual removida"] },
+  { id: 7, marketDescription: "AGULHA DESC 25X0,70", standardDescription: "AGULHA 25 X 0,70 UN", repetitions: 31, confidence: 83.6, status: "Provável", evidence: ["Medida 25 × 0,70 preservada", "DESC interpretado como descartável", "Unidade compatível"] },
+  { id: 8, marketDescription: "ACETILCISTEINA SACHE 600 MG 5G", standardDescription: "ACETILCISTEINA 600MG ENV 5G", repetitions: 12, confidence: 91.9, status: "Padronizado", evidence: ["Dosagem 600MG", "Peso 5G", "Sachê normalizado como envelope"] },
 ];
 
-const marketOffers: Record<number, MarketOffer[]> = {
-  1: [
-    { competitor: "Fornecedor A", brand: "MEDIX", price: 12.48, quantity: 12, unit: "CAIXA", packSize: 50, baseUnit: "PAR" },
-    { competitor: "Fornecedor B", brand: "DESCARPACK", price: 13.2, quantity: 250, unit: "PAR", packSize: 1, baseUnit: "PAR" },
-    { competitor: "Fornecedor C", brand: "NEW HAND", price: 15.9, quantity: 3, unit: "PACOTE", packSize: 10, baseUnit: "PAR" },
-    { competitor: "Fornecedor D", brand: "MEDIX", price: 12.95, quantity: 5, unit: "FARDO", packSize: null, baseUnit: "PAR" },
-  ],
-  2: [
-    { competitor: "Fornecedor A", brand: "MEDIX", price: 26.9, quantity: 18, unit: "CAIXA", packSize: 100, baseUnit: "UN" },
-    { competitor: "Fornecedor E", brand: "NUGARD", price: 24.7, quantity: 650, unit: "UN", packSize: 1, baseUnit: "UN" },
-    { competitor: "Fornecedor B", brand: "DESCARPACK", price: 28.35, quantity: 9, unit: "CAIXA", packSize: 100, baseUnit: "UN" },
-  ],
-  3: [
-    { competitor: "Fornecedor C", brand: "MEDIX", price: 8.4, quantity: 20, unit: "PAR", packSize: 1, baseUnit: "PAR" },
-    { competitor: "Fornecedor F", brand: "LEMGRUBER", price: 9.15, quantity: 4, unit: "CAIXA", packSize: null, baseUnit: "PAR" },
-  ],
-  4: [
-    { competitor: "Fornecedor G", brand: "ASTRAZENECA", price: 4380, quantity: 2, unit: "CAIXA", packSize: 60, baseUnit: "CÁPS" },
-    { competitor: "Fornecedor H", brand: "ASTRAZENECA", price: 4295, quantity: 120, unit: "CÁPS", packSize: 1, baseUnit: "CÁPS" },
-  ],
-  5: [
-    { competitor: "Fornecedor A", brand: "SR", price: 0.68, quantity: 10, unit: "CAIXA", packSize: 100, baseUnit: "UN" },
-    { competitor: "Fornecedor B", brand: "DESCARPACK", price: 0.74, quantity: 800, unit: "UN", packSize: 1, baseUnit: "UN" },
-    { competitor: "Fornecedor E", brand: "INJEX", price: 0.71, quantity: 4, unit: "PACOTE", packSize: 50, baseUnit: "UN" },
-  ],
-  6: [
-    { competitor: "Fornecedor D", brand: "LABOR IMPORT", price: 1.42, quantity: 420, unit: "UN", packSize: 1, baseUnit: "UN" },
-    { competitor: "Fornecedor B", brand: "DESCARPACK", price: 1.58, quantity: 5, unit: "CAIXA", packSize: 100, baseUnit: "UN" },
-    { competitor: "Fornecedor F", brand: "MEDSONDA", price: 1.36, quantity: 2, unit: "FARDO", packSize: null, baseUnit: "UN" },
-  ],
+const productData: Record<number, ProductData> = {
+  1: { sogamaxPrice: 8.90, offers: [
+    { competitor: "Fornecedor Alfa", brand: "THEOTO", price: 8.42, quantity: 60, unit: "PACOTE", packSize: 100, baseUnit: "UN" },
+    { competitor: "Fornecedor Beta", brand: "ESTILO", price: 9.18, quantity: 4200, unit: "UN", packSize: 1, baseUnit: "UN" },
+    { competitor: "Fornecedor Delta", brand: "TALGE", price: 8.76, quantity: 35, unit: "PACOTE", packSize: 100, baseUnit: "UN" },
+  ]},
+  2: { sogamaxPrice: 18.70, offers: [
+    { competitor: "Fornecedor Alfa", brand: "MAXI CONFORT", price: 19.10, quantity: 28, unit: "PACOTE", packSize: 20, baseUnit: "UN" },
+    { competitor: "Fornecedor Gama", brand: "BIGFRAL", price: 17.95, quantity: 600, unit: "UN", packSize: 1, baseUnit: "UN" },
+    { competitor: "Fornecedor Ômega", brand: "PLENITUD", price: 20.30, quantity: 12, unit: "FARDO", packSize: null, baseUnit: "UN" },
+  ]},
+  3: { sogamaxPrice: 14.55, offers: [
+    { competitor: "Fornecedor Beta", brand: "ACHE", price: 15.20, quantity: 45, unit: "FRASCO", packSize: 1, baseUnit: "FR" },
+    { competitor: "Fornecedor Delta", brand: "CIMED", price: 13.88, quantity: 80, unit: "FRASCO", packSize: 1, baseUnit: "FR" },
+    { competitor: "Fornecedor Gama", brand: "GEOLAB", price: 14.76, quantity: 9, unit: "CAIXA", packSize: 1, baseUnit: "FR" },
+  ]},
+  4: { sogamaxPrice: 16.20, offers: [
+    { competitor: "Fornecedor Alfa", brand: "EMS", price: 15.65, quantity: 32, unit: "FRASCO", packSize: 1, baseUnit: "FR" },
+    { competitor: "Fornecedor Beta", brand: "ACHE", price: 17.40, quantity: 20, unit: "FRASCO", packSize: 1, baseUnit: "FR" },
+  ]},
+  5: { sogamaxPrice: 0.18, offers: [
+    { competitor: "Fornecedor Delta", brand: "BRASTERAPICA", price: 0.16, quantity: 2500, unit: "COMP", packSize: 1, baseUnit: "COMP" },
+    { competitor: "Fornecedor Gama", brand: "EMS", price: 0.19, quantity: 40, unit: "CAIXA", packSize: 30, baseUnit: "COMP" },
+  ]},
+  6: { sogamaxPrice: 0.74, offers: [
+    { competitor: "Fornecedor Alfa", brand: "SAMTEC", price: 0.69, quantity: 1200, unit: "AMPOLA", packSize: 1, baseUnit: "AMP" },
+    { competitor: "Fornecedor Ômega", brand: "EQUIPLEX", price: 0.78, quantity: 30, unit: "CAIXA", packSize: 200, baseUnit: "AMP" },
+  ]},
+  7: { sogamaxPrice: 0.12, offers: [
+    { competitor: "Fornecedor Beta", brand: "DESCARPACK", price: 0.11, quantity: 6000, unit: "UN", packSize: 1, baseUnit: "UN" },
+    { competitor: "Fornecedor Delta", brand: "SR", price: 0.13, quantity: 50, unit: "CAIXA", packSize: 100, baseUnit: "UN" },
+    { competitor: "Fornecedor Gama", brand: "INJEX", price: 0.12, quantity: 40, unit: "CAIXA", packSize: 100, baseUnit: "UN" },
+  ]},
+  8: { sogamaxPrice: 3.36, offers: [
+    { competitor: "Fornecedor Alfa", brand: "EUROFARMA", price: 3.25, quantity: 240, unit: "ENVELOPE", packSize: 1, baseUnit: "ENV" },
+    { competitor: "Fornecedor Ômega", brand: "EMS", price: 3.58, quantity: 20, unit: "CAIXA", packSize: 16, baseUnit: "ENV" },
+  ]},
 };
 
-const statusClass: Record<Status, string> = { Forte: "status strong", Provável: "status probable", Revisar: "status review", "Sem código": "status missing" };
-const navItems: { id: View; label: string; description: string }[] = [
-  { id: "dashboard", label: "Visão geral", description: "Indicadores do cruzamento" },
-  { id: "import", label: "Importar arquivos", description: "Mercado e estoque" },
-  { id: "mapping", label: "Mapa de descrições", description: "Revisar e aprovar" },
-  { id: "export", label: "Exportação", description: "Relatório enriquecido" },
+const processedFiles = [
+  { name: "MedicalVM_2026-08-20.xlsx", period: "20/08/2026", rows: "2.597 linhas", status: "Concluído" },
+  { name: "MedicalVM_2026-08-13.xlsx", period: "13/08/2026", rows: "2.418 linhas", status: "Concluído" },
+  { name: "MedicalVM_2026-08-06.xlsx", period: "06/08/2026", rows: "2.206 linhas", status: "Concluído" },
 ];
 
-function downloadCsv(rows: MatchRow[], approved: number[]) {
-  const header = ["descricao_limpa", "repeticoes", "codigo_sogamax", "produto_sogamax", "confianca", "preco_minimo", "preco_medio", "demanda_padronizada", "unidade_base", "marcas_concorrentes", "status_aprovacao"];
+const navItems: { id: View; label: string; description: string }[] = [
+  { id: "dashboard", label: "Visão geral", description: "Indicadores da padronização" },
+  { id: "schedule", label: "Programar análise", description: "Enviar tabela do mercado" },
+  { id: "validation", label: "Validação assistida", description: "Revisar descrições" },
+  { id: "export", label: "Exportação", description: "Relatório padronizado" },
+];
+
+const statusClass: Record<MatchStatus, string> = { Padronizado: "status strong", Provável: "status probable", Revisar: "status review" };
+const money = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+function priceSummary(id: number) {
+  const data = productData[id];
+  const ordered = [...data.offers].sort((a, b) => a.price - b.price);
+  return { data, lowest: ordered[0], average: ordered.reduce((sum, offer) => sum + offer.price, 0) / ordered.length };
+}
+
+function downloadCsv(approved: number[]) {
+  const header = ["descricao_recebida", "descricao_padronizada_sogamax", "repeticoes", "confianca_descricao", "menor_preco_mercado", "concorrente_menor_preco", "marca_menor_preco", "preco_praticado_sogamax", "demanda_padronizada", "marcas_encontradas", "status_validacao"];
   const body = rows.map((row) => {
-    const offers = marketOffers[row.id] ?? [];
-    const prices = offers.map((offer) => offer.price);
-    const convertedDemand = offers.reduce((total, offer) => total + (offer.packSize === null ? 0 : offer.quantity * offer.packSize), 0);
-    const brands = [...new Set(offers.map((offer) => offer.brand))].join(" | ");
-    return [row.description, row.repetitions, approved.includes(row.id) ? row.candidate : "", approved.includes(row.id) ? row.product : "", row.confidence.toFixed(1).replace(".", ","), Math.min(...prices).toFixed(2).replace(".", ","), (prices.reduce((sum, price) => sum + price, 0) / prices.length).toFixed(2).replace(".", ","), convertedDemand, offers[0]?.baseUnit ?? "", brands, approved.includes(row.id) ? "APROVADO" : "PENDENTE"];
+    const { data, lowest } = priceSummary(row.id);
+    const demand = data.offers.reduce((sum, offer) => sum + (offer.packSize === null ? 0 : offer.quantity * offer.packSize), 0);
+    const brands = [...new Set(data.offers.map((offer) => offer.brand))].join(" | ");
+    return [row.marketDescription, row.standardDescription, row.repetitions, `${row.confidence.toFixed(1).replace(".", ",")}%`, lowest.price.toFixed(2).replace(".", ","), lowest.competitor, lowest.brand, data.sogamaxPrice.toFixed(2).replace(".", ","), demand, brands, approved.includes(row.id) ? "APROVADO" : "PENDENTE"];
   });
   const csv = [header, ...body].map((line) => line.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(";")).join("\n");
-  const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = "relatorio_hospitalar_enriquecido.csv";
-  anchor.click();
-  URL.revokeObjectURL(url);
+  const url = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" }));
+  const anchor = document.createElement("a"); anchor.href = url; anchor.download = "descricoes_hospitalares_padronizadas.csv"; anchor.click(); URL.revokeObjectURL(url);
 }
 
 export default function Home() {
   const [view, setView] = useState<View>("dashboard");
   const [selectedId, setSelectedId] = useState(1);
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<"Todos" | Status>("Todos");
+  const [filter, setFilter] = useState<"Todos" | MatchStatus>("Todos");
   const [approved, setApproved] = useState<number[]>([]);
   const [toast, setToast] = useState("");
-  const [marketFile, setMarketFile] = useState("Relatório Modelo — MedicalVM.xlsx");
-  const [stockFile, setStockFile] = useState("Estoque Hospitalar Atualizado.xls");
+  const [marketFile, setMarketFile] = useState("MedicalVM_2026-08-27.xlsx");
+  const [period, setPeriod] = useState("2026-08-27");
+  const [fileState, setFileState] = useState<FileState>("ready");
   const [processing, setProcessing] = useState(false);
-  const [processed, setProcessed] = useState(true);
   const [activePopup, setActivePopup] = useState<PopupKind | null>(null);
   const marketInput = useRef<HTMLInputElement>(null);
-  const stockInput = useRef<HTMLInputElement>(null);
 
-  const selected = initialRows.find((row) => row.id === selectedId) ?? initialRows[0];
-  const selectedOffers = marketOffers[selected.id] ?? [];
-  const filteredRows = useMemo(() => initialRows.filter((row) => {
-    const matchesText = `${row.description} ${row.candidate} ${row.product}`.toLowerCase().includes(search.toLowerCase());
-    return matchesText && (filter === "Todos" || row.status === filter);
+  const selected = rows.find((row) => row.id === selectedId) ?? rows[0];
+  const summary = priceSummary(selected.id);
+  const filteredRows = useMemo(() => rows.filter((row) => {
+    const text = `${row.marketDescription} ${row.standardDescription}`.toLowerCase();
+    return text.includes(search.toLowerCase()) && (filter === "Todos" || row.status === filter);
   }), [search, filter]);
 
   useEffect(() => {
     if (!activePopup) return;
-    const closeOnEscape = (event: KeyboardEvent) => event.key === "Escape" && setActivePopup(null);
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
+    const close = (event: KeyboardEvent) => event.key === "Escape" && setActivePopup(null);
+    window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close);
   }, [activePopup]);
 
-  function flash(message: string) {
-    setToast(message);
-    window.setTimeout(() => setToast(""), 2800);
+  function flash(message: string) { setToast(message); window.setTimeout(() => setToast(""), 3000); }
+
+  function validateFile(name: string, selectedPeriod = period) {
+    const duplicate = processedFiles.some((item) => item.name.toLowerCase() === name.toLowerCase());
+    const old = selectedPeriod < "2026-08-20";
+    const state: FileState = duplicate ? "duplicate" : old ? "old" : "ready";
+    setFileState(state); return state;
   }
 
-  function approve() {
-    if (selected.candidate === "—") return flash("Escolha um código Sogamax antes de aprovar.");
-    setApproved((current) => current.includes(selected.id) ? current : [...current, selected.id]);
-    flash(`Código ${selected.candidate} aprovado e pronto para reaplicar.`);
+  function chooseFile(file: File) {
+    setMarketFile(file.name); const state = validateFile(file.name);
+    if (state !== "ready") flash(state === "duplicate" ? "Arquivo bloqueado: ele já foi processado." : "Arquivo bloqueado: competência anterior à última análise válida.");
   }
 
-  function runMatching() {
-    if (!marketFile || !stockFile) return flash("Selecione os dois arquivos para iniciar.");
-    setProcessing(true); setProcessed(false);
-    window.setTimeout(() => { setProcessing(false); setProcessed(true); flash("Cruzamento concluído: 232 descrições limpas analisadas."); }, 1500);
+  function changePeriod(value: string) { setPeriod(value); validateFile(marketFile, value); }
+  function runAnalysis() {
+    if (fileState !== "ready") return flash("A análise não pode iniciar enquanto o arquivo estiver bloqueado.");
+    setProcessing(true);
+    window.setTimeout(() => { setProcessing(false); flash("Análise concluída: descrições limpas, agrupadas e comparadas com a base Sogamax."); setView("validation"); }, 1500);
   }
+  function openProduct(id: number, popup: PopupKind = "prices") { setSelectedId(id); setActivePopup(popup); }
+  function approve() { setApproved((current) => current.includes(selected.id) ? current : [...current, selected.id]); flash(`Padronização aprovada para ${selected.repetitions} ocorrência(s).`); }
 
-  return (
-    <main className="app-shell">
-      <aside className="sidebar">
-        <div className="brand"><div className="brand-mark">S</div><div><strong>SOGAMAX</strong><span>Inteligência Hospitalar</span></div></div>
-        <nav aria-label="Navegação principal">
-          {navItems.map((item, index) => (
-            <button key={item.id} className={view === item.id ? "nav-item active" : "nav-item"} onClick={() => setView(item.id)}>
-              <span className="nav-index">0{index + 1}</span><span><strong>{item.label}</strong><small>{item.description}</small></span>
-            </button>
-          ))}
-        </nav>
-        <div className="sidebar-note"><span className="pulse" /><div><strong>Base atualizada</strong><small>846 códigos hospitalares</small></div></div>
-        <div className="sidebar-footer">Protótipo conceitual · Central-IC</div>
-      </aside>
+  return <main className="app-shell">
+    <aside className="sidebar">
+      <div className="brand"><div className="brand-mark">S</div><div><strong>SOGAMAX</strong><span>Inteligência Hospitalar</span></div></div>
+      <nav aria-label="Navegação principal">{navItems.map((item, index) => <button key={item.id} className={view === item.id ? "nav-item active" : "nav-item"} onClick={() => setView(item.id)}><span className="nav-index">0{index + 1}</span><span><strong>{item.label}</strong><small>{item.description}</small></span></button>)}</nav>
+      <div className="sidebar-note"><span className="pulse" /><div><strong>Base integrada</strong><small>{sogamaxDescriptions.length} descrições Sogamax</small></div></div>
+      <div className="sidebar-footer">Protótipo conceitual · Central-IC</div>
+    </aside>
 
-      <section className="workspace">
-        <header className="topbar">
-          <div><div className="breadcrumb">INTELIGÊNCIA DE MERCADO / HOSPITALAR</div><h1>{navItems.find((item) => item.id === view)?.label}</h1></div>
-          <div className="top-actions"><span className="safe-pill"><i /> Validação humana ativa</span><div className="avatar">IM</div></div>
-        </header>
+    <section className="workspace">
+      <header className="topbar"><div><div className="breadcrumb">INTELIGÊNCIA DE MERCADO / HOSPITALAR</div><h1>{navItems.find((item) => item.id === view)?.label}</h1></div><div className="top-actions"><span className="safe-pill"><i /> Base Sogamax conectada</span><div className="avatar">IM</div></div></header>
 
-        {view === "dashboard" && (
-          <div className="page dashboard-page">
-            <section className="hero-row">
-              <div><span className="eyebrow">ÚLTIMO PROCESSAMENTO</span><h2>O mercado agora pode ser analisado<br />pelo código Sogamax.</h2><p>As linhas foram preservadas. As descrições repetidas foram agrupadas para que cada vínculo seja validado uma única vez.</p></div>
-              <button className="primary" onClick={() => setView("mapping")}>Revisar sugestões <span>→</span></button>
-            </section>
+      {view === "dashboard" && <div className="page dashboard-page">
+        <section className="hero-row"><div><span className="eyebrow">OBJETIVO DA FERRAMENTA</span><h2>Uma descrição única para<br />entender todo o mercado.</h2><p>A ferramenta limpa as descrições recebidas, agrupa repetições e encontra a forma equivalente na base hospitalar da Sogamax. O resultado é um padrão confiável para análise.</p></div><button className="primary" onClick={() => setView("validation")}>Abrir validação <span>→</span></button></section>
+        <section className="kpi-grid"><article><span>Linhas recebidas</span><strong>2.597</strong><small>100% preservadas</small></article><article><span>Descrições limpas</span><strong>232</strong><small>repetições agrupadas</small></article><article className="accent"><span>Referências Sogamax</span><strong>{sogamaxDescriptions.length}</strong><small>da planilha hospitalar enviada</small></article><article><span>Validadas nesta sessão</span><strong>{approved.length}</strong><small>decisões reaplicadas às repetições</small></article></section>
+        <section className="content-grid">
+          <article className="panel status-panel"><div className="panel-head"><div><span className="eyebrow">QUALIDADE DA PADRONIZAÇÃO</span><h3>Confiança baseada na descrição</h3></div><button className="text-button" onClick={() => setView("validation")}>Ver tabela →</button></div><div className="status-bars">{[{ label: "Padronizado", value: 112, color: "#25a56a" }, { label: "Provável", value: 64, color: "#e7b53f" }, { label: "Revisão humana", value: 56, color: "#e8833a" }].map((item) => <div className="bar-row" key={item.label}><div className="bar-label"><span>{item.label}</span><strong>{item.value}</strong></div><div className="bar-track"><div style={{ width: `${item.value / 112 * 100}%`, background: item.color }} /></div></div>)}</div></article>
+          <article className="panel coverage-panel"><span className="eyebrow">GANHO OPERACIONAL</span><div className="coverage-number">232 <span>decisões</span></div><p>substituem a revisão manual das 2.597 linhas porque cada descrição limpa é tratada uma única vez.</p><div className="coverage-meter"><div style={{ width: "91%" }} /></div><small>Repetições preservadas para preços, marcas e demanda</small></article>
+          <article className="panel rule-panel"><span className="rule-icon">✓</span><div><span className="eyebrow">REGRA PRINCIPAL</span><h3>A descrição Sogamax vira a referência.</h3><p>A confiança considera termos, dosagem, volume, apresentação e quantidade da embalagem.</p></div></article>
+        </section>
+      </div>}
 
-            <section className="kpi-grid">
-              <article><span>Linhas do mercado</span><strong>2.597</strong><small>100% preservadas</small></article>
-              <article><span>Descrições limpas</span><strong>232</strong><small>264 descrições exatas</small></article>
-              <article className="accent"><span>Com sugestão</span><strong>56</strong><small>705 linhas alcançadas</small></article>
-              <article><span>Aguardando decisão</span><strong>{176 - approved.length}</strong><small>{approved.length} aprovadas nesta sessão</small></article>
-            </section>
+      {view === "schedule" && <div className="page">
+        <section className="section-intro"><div><span className="eyebrow">ENTRADA ÚNICA</span><h2>Programar nova análise</h2><p>A pessoa envia apenas a tabela recebida do mercado. A base Sogamax já está integrada e não precisa ser importada novamente.</p></div><div className="step-pill">Base fixa · {sogamaxDescriptions.length} descrições</div></section>
+        <section className="schedule-grid">
+          <article className="panel upload-card market-only"><div className="upload-icon">↑</div><span className="eyebrow">TABELA RECEBIDA</span><h3>Relatório do mercado hospitalar</h3><p>MedicalVM ou outra plataforma com descrições, preços, marcas e demandas.</p><input ref={marketInput} type="file" accept=".xlsx,.xls,.csv" hidden onChange={(event) => event.target.files?.[0] && chooseFile(event.target.files[0])} /><button className="drop-zone" onClick={() => marketInput.current?.click()}><strong>{marketFile}</strong><span>Selecionar outra tabela</span></button><label className="period-field"><span>Competência do arquivo</span><input type="date" value={period} onChange={(event) => changePeriod(event.target.value)} /></label><FileValidation state={fileState} /></article>
+          <aside className="panel integration-card"><span className="integration-icon">↻</span><span className="eyebrow">FONTE INTERNA</span><h3>Descrição hospitalar Sogamax</h3><strong className="base-count">{sogamaxDescriptions.length}</strong><p>descrições únicas já gravadas no protótipo a partir da planilha enviada.</p><div className="integration-ok"><span>✓</span><div><strong>Integração simulada ativa</strong><small>No sistema definitivo, esses dados chegarão automaticamente pela API.</small></div></div></aside>
+        </section>
+        <section className={`panel process-panel file-${fileState}`}><div><span className="eyebrow">VERIFICAÇÃO AUTOMÁTICA</span><h3>{fileState === "ready" ? "Arquivo liberado para análise" : fileState === "duplicate" ? "Arquivo já processado" : "Competência anterior bloqueada"}</h3><p>{fileState === "ready" ? "Identidade e período conferidos. Nenhum processamento anterior encontrado." : fileState === "duplicate" ? "A mesma planilha consta no histórico e não pode ser analisada novamente." : "A competência informada é anterior ao último relatório válido de 20/08/2026."}</p></div><button className="primary" onClick={runAnalysis} disabled={processing || fileState !== "ready"}>{processing ? "Padronizando…" : fileState === "ready" ? "Iniciar análise" : "Análise bloqueada"}</button>{processing && <div className="loading-line"><div /></div>}</section>
+        <section className="panel history-panel"><div className="panel-head"><div><span className="eyebrow">HISTÓRICO DE CONTROLE</span><h3>Arquivos já analisados</h3></div><span className="history-lock">Bloqueio de duplicidade ativo</span></div><div className="table-wrap"><table className="history-table"><thead><tr><th>Arquivo</th><th>Competência</th><th>Volume</th><th>Situação</th></tr></thead><tbody>{processedFiles.map((file) => <tr key={file.name}><td><strong>{file.name}</strong></td><td>{file.period}</td><td>{file.rows}</td><td><span className="status strong">{file.status}</span></td></tr>)}</tbody></table></div></section>
+      </div>}
 
-            <section className="content-grid">
-              <article className="panel status-panel">
-                <div className="panel-head"><div><span className="eyebrow">QUALIDADE DO VÍNCULO</span><h3>Status das descrições</h3></div><button className="text-button" onClick={() => setView("mapping")}>Ver mapa completo →</button></div>
-                <div className="status-bars">
-                  {[{ label: "Forte", value: 12, color: "#25a56a" }, { label: "Provável", value: 44, color: "#e7b53f" }, { label: "Revisão manual", value: 78, color: "#e8833a" }, { label: "Sem código seguro", value: 98, color: "#d95555" }].map((item) => (
-                    <div className="bar-row" key={item.label}><div className="bar-label"><span>{item.label}</span><strong>{item.value}</strong></div><div className="bar-track"><div style={{ width: `${item.value / 98 * 100}%`, background: item.color }} /></div></div>
-                  ))}
-                </div>
-              </article>
-              <article className="panel coverage-panel"><span className="eyebrow">IMPACTO IMEDIATO</span><div className="coverage-number">705 <span>linhas</span></div><p>podem reutilizar as 56 sugestões fortes ou prováveis depois da aprovação.</p><div className="coverage-meter"><div /></div><small>27,1% das linhas do relatório cobertas por candidatos seguros</small></article>
-              <article className="panel rule-panel"><span className="rule-icon">✓</span><div><span className="eyebrow">REGRA DE SEGURANÇA</span><h3>Nenhum código é publicado automaticamente.</h3><p>A ferramenta recomenda. A equipe confirma ou corrige antes de enriquecer o relatório.</p></div></article>
-            </section>
-          </div>
-        )}
+      {view === "validation" && <div className="page mapping-page">
+        <section className="section-intro compact"><div><span className="eyebrow">PADRONIZAÇÃO ASSISTIDA</span><h2>Descrições prontas para validar</h2><p>A tabela já mostra preço Sogamax, menor preço do mercado, concorrente e marca. Clique em qualquer produto para abrir todos os detalhes.</p></div><div className="approval-count"><strong>{approved.length}</strong><span>aprovadas nesta sessão</span></div></section>
+        <div className="mapping-layout validation-wide">
+          <section className="panel table-panel"><div className="table-toolbar"><label className="search-box"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar descrição recebida ou descrição Sogamax…" /></label><select value={filter} onChange={(event) => setFilter(event.target.value as "Todos" | MatchStatus)} aria-label="Filtrar por situação"><option>Todos</option><option>Padronizado</option><option>Provável</option><option>Revisar</option></select></div><div className="table-wrap"><table className="validation-table"><thead><tr><th>Descrição recebida → padrão Sogamax</th><th>Rep.</th><th>Confiança</th><th>Menor preço</th><th>Concorrente / marca</th><th>Preço Sogamax</th><th>Status</th></tr></thead><tbody>{filteredRows.map((row) => { const info = priceSummary(row.id); return <tr key={row.id} className={selected.id === row.id ? "selected" : ""} onClick={() => openProduct(row.id)}><td><strong>{row.marketDescription}</strong><small>{row.standardDescription}</small></td><td><strong>{row.repetitions}</strong></td><td><strong>{row.confidence.toFixed(1).replace(".", ",")}%</strong></td><td><strong>{money(info.lowest.price)}</strong></td><td><strong>{info.lowest.competitor}</strong><small>{info.lowest.brand}</small></td><td><strong>{money(info.data.sogamaxPrice)}</strong><small>demonstrativo</small></td><td><span className={statusClass[row.status]}>{approved.includes(row.id) ? "Aprovado" : row.status}</span></td></tr>})}</tbody></table></div></section>
+          <aside className="panel detail-panel compact-detail"><div className="detail-top"><span className={statusClass[selected.status]}>{approved.includes(selected.id) ? "Aprovado" : selected.status}</span><span>{selected.confidence.toFixed(1).replace(".", ",")}%</span></div><span className="eyebrow">PADRÃO SOGAMAX</span><h3>{selected.standardDescription}</h3><div className="quick-price"><span>Preço Sogamax</span><strong>{money(summary.data.sogamaxPrice)}</strong><small>valor demonstrativo</small></div><div className="winner-card"><span>MENOR PREÇO DO MERCADO</span><strong>{money(summary.lowest.price)}</strong><p>{summary.lowest.competitor} · {summary.lowest.brand}</p></div><button className="primary wide" onClick={() => setActivePopup("prices")}>Ver todos os detalhes</button><button className="secondary wide" onClick={approve} disabled={approved.includes(selected.id)}>{approved.includes(selected.id) ? "Padronização aprovada ✓" : "Aprovar descrição"}</button></aside>
+        </div>
+      </div>}
 
-        {view === "import" && (
-          <div className="page">
-            <section className="section-intro"><div><span className="eyebrow">ETAPA 01</span><h2>Importe as duas fontes</h2><p>A chave comum será construída pela limpeza das descrições. Os arquivos originais não são alterados.</p></div><div className="step-pill">1 de 4 · Importação</div></section>
-            <section className="upload-grid">
-              <UploadCard title="Relatório de mercado" subtitle="MedicalVM ou plataforma de cotação" filename={marketFile} inputRef={marketInput} onFile={setMarketFile} />
-              <UploadCard title="Estoque hospitalar Sogamax" subtitle="Base de produtos e códigos internos" filename={stockFile} inputRef={stockInput} onFile={setStockFile} />
-            </section>
-            <section className="panel process-panel"><div><span className="eyebrow">PROCESSAMENTO</span><h3>{processing ? "Limpando e comparando descrições…" : processed ? "Arquivos prontos para novo processamento" : "Aguardando arquivos"}</h3><p>Normalização → agrupamento → busca de candidatos → classificação de confiança</p></div><button className="primary" onClick={runMatching} disabled={processing}>{processing ? "Processando…" : "Executar cruzamento"}</button>{processing && <div className="loading-line"><div /></div>}</section>
-            <div className="flow-strip">{["Importar", "Limpar", "Cruzar", "Validar", "Publicar"].map((step, index) => <div key={step} className={index === 0 || (index <= 2 && processed) ? "done" : ""}><span>{index + 1}</span><strong>{step}</strong></div>)}</div>
-          </div>
-        )}
+      {view === "export" && <div className="page"><section className="section-intro"><div><span className="eyebrow">SAÍDA DA ANÁLISE</span><h2>Relatório com descrições padronizadas</h2><p>As 2.597 linhas permanecem no relatório. Cada repetição recebe a mesma descrição Sogamax aprovada, preservando preços, demandas, marcas e concorrentes.</p></div></section><section className="export-grid"><article className="panel export-card"><div className="file-badge">CSV</div><div><span className="eyebrow">ARQUIVO FINAL</span><h3>Mercado hospitalar padronizado</h3><p>Inclui descrição original, descrição padrão Sogamax, repetições, confiança, menor preço, concorrente, marca, preço Sogamax, demanda padronizada e situação da validação.</p></div><div className="export-stats"><div><strong>2.597</strong><span>linhas preservadas</span></div><div><strong>232</strong><span>descrições limpas</span></div><div><strong>{approved.length}</strong><span>padrões aprovados</span></div></div><button className="primary wide" onClick={() => downloadCsv(approved)}>Baixar demonstração em CSV <span>↓</span></button></article><aside className="panel release-card"><span className="eyebrow">CONTEÚDO DO ARQUIVO</span><h3>Pronto para análise comercial</h3>{["Descrição única da Sogamax", "Menor preço e responsável", "Preço praticado pela Sogamax", "Demanda em unidade-base", "Marcas e concorrentes"].map((item) => <div className="check-item ok" key={item}><span>✓</span><div><strong>{item}</strong></div></div>)}</aside></section></div>}
+    </section>
 
-        {view === "mapping" && (
-          <div className="page mapping-page">
-            <section className="section-intro compact"><div><span className="eyebrow">ETAPA 04</span><h2>Validação assistida</h2><p>Uma decisão aprovada é reaplicada a todas as ocorrências da mesma descrição limpa.</p></div><div className="approval-count"><strong>{approved.length}</strong><span>aprovadas nesta sessão</span></div></section>
-            <div className="mapping-layout">
-              <section className="panel table-panel">
-                <div className="table-toolbar"><label className="search-box"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar descrição ou código…" /></label><select value={filter} onChange={(event) => setFilter(event.target.value as "Todos" | Status)} aria-label="Filtrar por status"><option>Todos</option><option>Forte</option><option>Provável</option><option>Revisar</option><option>Sem código</option></select></div>
-                <div className="table-wrap"><table><thead><tr><th>Descrição limpa</th><th>Repet.</th><th>Código</th><th>Confiança</th><th>Status</th></tr></thead><tbody>{filteredRows.map((row) => (
-                  <tr key={row.id} className={selected.id === row.id ? "selected" : ""} onClick={() => setSelectedId(row.id)}><td><strong>{row.description}</strong><small>{approved.includes(row.id) ? "✓ vínculo aprovado" : row.product}</small></td><td>{row.repetitions}</td><td><strong>{row.candidate}</strong></td><td>{row.confidence.toFixed(1).replace(".", ",")}%</td><td><span className={statusClass[row.status]}>{row.status}</span></td></tr>
-                ))}</tbody></table>{filteredRows.length === 0 && <div className="empty-state">Nenhuma descrição encontrada com esses filtros.</div>}</div>
-              </section>
-              <aside className="panel detail-panel">
-                <div className="detail-top"><span className={statusClass[selected.status]}>{selected.status}</span><span>{selected.confidence.toFixed(1).replace(".", ",")}% de confiança</span></div>
-                <span className="eyebrow">DESCRIÇÃO DO MERCADO</span><h3>{selected.description}</h3><div className="arrow-down">↓</div>
-                <span className="eyebrow">CANDIDATO SOGAMAX</span><div className="candidate-code">{selected.candidate === "—" ? "Sem candidato seguro" : `Código ${selected.candidate}`}</div><h4>{selected.product}</h4>
-                <div className="candidate-meta"><span>Marca</span><strong>{selected.brand}</strong><span>Repetições</span><strong>{selected.repetitions} linhas</strong></div>
-                <div className="market-actions">
-                  <span className="eyebrow">DETALHES DO MERCADO</span>
-                  <div className="market-action-grid">
-                    <button onClick={() => setActivePopup("prices")}><span className="market-action-icon">R$</span><strong>Preços</strong><small>{selectedOffers.length} concorrentes</small></button>
-                    <button onClick={() => setActivePopup("demands")}><span className="market-action-icon">Σ</span><strong>Demanda</strong><small>unidades tratadas</small></button>
-                    <button onClick={() => setActivePopup("brands")}><span className="market-action-icon">M</span><strong>Marcas</strong><small>{new Set(selectedOffers.map((offer) => offer.brand)).size} encontradas</small></button>
-                  </div>
-                </div>
-                <div className="evidence"><span className="eyebrow">EVIDÊNCIAS</span>{selected.evidence.map((evidence) => <p key={evidence}><i>✓</i>{evidence}</p>)}</div>
-                <div className="decision-actions"><button className="primary" onClick={approve} disabled={approved.includes(selected.id)}>{approved.includes(selected.id) ? "Código aprovado ✓" : "Aprovar código"}</button><button className="secondary" onClick={() => flash("Modo de correção aberto para busca manual no estoque.")}>Corrigir vínculo</button></div>
-                <small className="security-copy">A aprovação será registrada para auditoria e reutilização futura.</small>
-              </aside>
-            </div>
-          </div>
-        )}
-
-        {view === "export" && (
-          <div className="page">
-            <section className="section-intro"><div><span className="eyebrow">ETAPA 05</span><h2>Relatório enriquecido</h2><p>Os códigos aparecem somente nas linhas cujas descrições foram aprovadas pela equipe.</p></div></section>
-            <section className="export-grid">
-              <article className="panel export-card"><div className="file-badge">XLSX</div><div><span className="eyebrow">SAÍDA PRINCIPAL</span><h3>Relatório completo com código Sogamax</h3><p>Preserva as 2.597 linhas originais, preços, fornecedores e marcas. O código validado é reaplicado às repetições.</p></div><div className="export-stats"><div><strong>2.597</strong><span>linhas</span></div><div><strong>{approved.length}</strong><span>vínculos aprovados</span></div><div><strong>{initialRows.filter((row) => approved.includes(row.id)).reduce((sum, row) => sum + row.repetitions, 0)}</strong><span>linhas enriquecidas</span></div></div><button className="primary wide" onClick={() => downloadCsv(initialRows, approved)}>Baixar demonstração em CSV <span>↓</span></button></article>
-              <aside className="panel release-card"><span className="eyebrow">CONTROLE DE PUBLICAÇÃO</span><h3>Pronto para liberar?</h3><div className="check-item ok"><span>✓</span><div><strong>Dados originais preservados</strong><small>Nenhuma linha foi removida</small></div></div><div className="check-item ok"><span>✓</span><div><strong>Estoque hospitalar atualizado</strong><small>846 códigos disponíveis</small></div></div><div className={approved.length ? "check-item ok" : "check-item pending"}><span>{approved.length ? "✓" : "!"}</span><div><strong>Validação humana</strong><small>{approved.length ? `${approved.length} vínculo(s) aprovado(s)` : "Nenhum vínculo aprovado nesta sessão"}</small></div></div><button className="secondary wide" onClick={() => setView("mapping")}>Voltar para validação</button></aside>
-            </section>
-          </div>
-        )}
-      </section>
-      {toast && <div className="toast" role="status"><span>✓</span>{toast}</div>}
-      {activePopup && <MarketPopup kind={activePopup} row={selected} offers={selectedOffers} onChange={setActivePopup} onClose={() => setActivePopup(null)} />}
-    </main>
-  );
+    {toast && <div className="toast" role="status"><span>✓</span>{toast}</div>}
+    {activePopup && <ProductPopup kind={activePopup} row={selected} data={summary.data} onChange={setActivePopup} onClose={() => setActivePopup(null)} />}
+  </main>;
 }
 
-function MarketPopup({ kind, row, offers, onChange, onClose }: { kind: PopupKind; row: MatchRow; offers: MarketOffer[]; onChange: (kind: PopupKind) => void; onClose: () => void }) {
-  const prices = offers.map((offer) => offer.price);
-  const minimum = Math.min(...prices);
-  const maximum = Math.max(...prices);
-  const average = prices.reduce((sum, price) => sum + price, 0) / prices.length;
+function FileValidation({ state }: { state: FileState }) {
+  if (state === "ready") return <div className="file-validation ok"><span>✓</span><div><strong>Arquivo novo e válido</strong><small>Liberado para programação</small></div></div>;
+  return <div className="file-validation blocked"><span>!</span><div><strong>{state === "duplicate" ? "Arquivo já analisado" : "Arquivo antigo"}</strong><small>{state === "duplicate" ? "Duplicidade encontrada no histórico" : "Competência anterior ao limite permitido"}</small></div></div>;
+}
+
+function ProductPopup({ kind, row, data, onChange, onClose }: { kind: PopupKind; row: DescriptionRow; data: ProductData; onChange: (kind: PopupKind) => void; onClose: () => void }) {
+  const offers = [...data.offers].sort((a, b) => a.price - b.price);
+  const minimum = offers[0];
+  const average = offers.reduce((sum, offer) => sum + offer.price, 0) / offers.length;
+  const maximum = offers[offers.length - 1];
   const converted = offers.filter((offer) => offer.packSize !== null);
   const pending = offers.filter((offer) => offer.packSize === null);
   const totalDemand = converted.reduce((sum, offer) => sum + offer.quantity * (offer.packSize ?? 0), 0);
-  const brands = [...new Set(offers.map((offer) => offer.brand))].map((brand) => {
-    const brandOffers = offers.filter((offer) => offer.brand === brand);
-    const normalizedDemand = brandOffers.reduce((sum, offer) => sum + (offer.packSize === null ? 0 : offer.quantity * offer.packSize), 0);
-    return { brand, offers: brandOffers.length, average: brandOffers.reduce((sum, offer) => sum + offer.price, 0) / brandOffers.length, normalizedDemand };
-  });
-  const money = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const brands = [...new Set(offers.map((offer) => offer.brand))].map((brand) => { const group = offers.filter((offer) => offer.brand === brand); return { brand, competitor: group.map((offer) => offer.competitor).join(" · "), average: group.reduce((sum, offer) => sum + offer.price, 0) / group.length, demand: group.reduce((sum, offer) => sum + (offer.packSize === null ? 0 : offer.quantity * offer.packSize), 0) }; });
+  const allPrices = [{ competitor: "SOGAMAX", brand: "Preço praticado", price: data.sogamaxPrice, unit: "Referência interna", packSize: 1 }, ...offers];
+  const absoluteMinimum = Math.min(...allPrices.map((offer) => offer.price));
 
-  return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="market-modal" role="dialog" aria-modal="true" aria-labelledby="market-modal-title">
-        <header className="modal-header">
-          <div><span className="eyebrow">VISÃO POR PRODUTO</span><h2 id="market-modal-title">{row.description}</h2><p>{row.candidate === "—" ? "Sem código Sogamax aprovado" : `Candidato Sogamax ${row.candidate}`} · Dados demonstrativos para validação do modelo</p></div>
-          <button className="modal-close" onClick={onClose} aria-label="Fechar pop-up">×</button>
-        </header>
-        <div className="modal-tabs" role="tablist" aria-label="Informações do mercado">
-          <button className={kind === "prices" ? "active" : ""} onClick={() => onChange("prices")}>Preços</button>
-          <button className={kind === "demands" ? "active" : ""} onClick={() => onChange("demands")}>Demanda padronizada</button>
-          <button className={kind === "brands" ? "active" : ""} onClick={() => onChange("brands")}>Marcas</button>
-        </div>
-
-        {kind === "prices" && <div className="modal-content">
-          <div className="modal-kpis"><div><span>Menor preço</span><strong>{money(minimum)}</strong></div><div><span>Preço médio</span><strong>{money(average)}</strong></div><div><span>Maior preço</span><strong>{money(maximum)}</strong></div><div><span>Cotações</span><strong>{offers.length}</strong></div></div>
-          <div className="popup-table-wrap"><table className="popup-table"><thead><tr><th>Concorrente</th><th>Marca</th><th>Apresentação</th><th>Preço cotado</th><th>Comparação</th></tr></thead><tbody>{[...offers].sort((a, b) => a.price - b.price).map((offer, index) => <tr key={`${offer.competitor}-${offer.price}`}><td><strong>{offer.competitor}</strong></td><td>{offer.brand}</td><td>{offer.unit}{offer.packSize && offer.packSize > 1 ? ` C/${offer.packSize}` : ""}</td><td><strong>{money(offer.price)}</strong></td><td>{index === 0 ? <span className="best-price">Menor preço</span> : <span className="price-delta">+{((offer.price / minimum - 1) * 100).toFixed(1).replace(".", ",")}%</span>}</td></tr>)}</tbody></table></div>
-          <div className="modal-note">Os preços permanecem separados por concorrente e apresentação. A ferramenta não mistura valores de embalagens diferentes sem identificar a unidade.</div>
-        </div>}
-
-        {kind === "demands" && <div className="modal-content">
-          <div className="modal-kpis"><div><span>Demanda convertida</span><strong>{totalDemand.toLocaleString("pt-BR")} {offers[0]?.baseUnit}</strong></div><div><span>Registros convertidos</span><strong>{converted.length}</strong></div><div><span>Aguardando regra</span><strong>{pending.length}</strong></div><div><span>Unidade-base</span><strong>{offers[0]?.baseUnit}</strong></div></div>
-          <div className="popup-table-wrap"><table className="popup-table demand-table"><thead><tr><th>Concorrente</th><th>Demanda original</th><th>Fator aplicado</th><th>Demanda padronizada</th><th>Situação</th></tr></thead><tbody>{offers.map((offer) => <tr key={`${offer.competitor}-${offer.quantity}`}><td><strong>{offer.competitor}</strong></td><td>{offer.quantity.toLocaleString("pt-BR")} {offer.unit}</td><td>{offer.packSize === null ? "Não definido" : offer.packSize === 1 ? "1 × 1" : `1 ${offer.unit} = ${offer.packSize} ${offer.baseUnit}`}</td><td><strong>{offer.packSize === null ? "—" : `${(offer.quantity * offer.packSize).toLocaleString("pt-BR")} ${offer.baseUnit}`}</strong></td><td>{offer.packSize === null ? <span className="conversion pending">Validar conversão</span> : <span className="conversion ok">Convertido</span>}</td></tr>)}</tbody></table></div>
-          {pending.length > 0 && <div className="conversion-alert"><strong>{pending.length} registro(s) fora do total.</strong><span>As quantidades em unidades sem fator confirmado não são somadas, evitando uma demanda incorreta.</span></div>}
-        </div>}
-
-        {kind === "brands" && <div className="modal-content">
-          <div className="brand-summary"><div><span className="eyebrow">MARCAS ENCONTRADAS</span><strong>{brands.length}</strong><p>Marcas distintas cotadas para esta mesma descrição de mercado.</p></div><div className="brand-ring" style={{ "--brand-count": brands.length } as React.CSSProperties}><span>{brands.length}</span><small>marcas</small></div></div>
-          <div className="brand-grid">{brands.map((brand, index) => <article key={brand.brand}><div className="brand-rank">0{index + 1}</div><div><h3>{brand.brand}</h3><p>{brand.offers} concorrente(s) oferecendo esta marca</p></div><dl><div><dt>Preço médio</dt><dd>{money(brand.average)}</dd></div><div><dt>Demanda convertida</dt><dd>{brand.normalizedDemand.toLocaleString("pt-BR")} {offers[0]?.baseUnit}</dd></div></dl></article>)}</div>
-          <div className="modal-note">Uma mesma descrição pode receber marcas diferentes. Por isso, a marca é exibida como visão de mercado e não substitui automaticamente a marca do cadastro Sogamax.</div>
-        </div>}
-      </section>
-    </div>
-  );
-}
-
-function UploadCard({ title, subtitle, filename, inputRef, onFile }: { title: string; subtitle: string; filename: string; inputRef: React.RefObject<HTMLInputElement | null>; onFile: (name: string) => void }) {
-  return <article className="panel upload-card"><div className="upload-icon">↑</div><span className="eyebrow">ARQUIVO DE ENTRADA</span><h3>{title}</h3><p>{subtitle}</p><input ref={inputRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={(event) => event.target.files?.[0] && onFile(event.target.files[0].name)} /><button className="drop-zone" onClick={() => inputRef.current?.click()}><strong>{filename || "Clique para selecionar"}</strong><span>{filename ? "Arquivo selecionado · substituir" : "XLSX, XLS ou CSV"}</span></button>{filename && <div className="file-ready"><span>✓</span><div><strong>Arquivo pronto</strong><small>{filename}</small></div></div>}</article>;
+  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className="market-modal" role="dialog" aria-modal="true"><header className="modal-header"><div><span className="eyebrow">DETALHES DO PRODUTO</span><h2>{row.standardDescription}</h2><p>Recebido como: {row.marketDescription} · aparece {row.repetitions} vezes</p></div><button className="modal-close" onClick={onClose} aria-label="Fechar">×</button></header><div className="modal-tabs"><button className={kind === "prices" ? "active" : ""} onClick={() => onChange("prices")}>Preços</button><button className={kind === "demands" ? "active" : ""} onClick={() => onChange("demands")}>Demanda padronizada</button><button className={kind === "brands" ? "active" : ""} onClick={() => onChange("brands")}>Marcas</button></div>
+    {kind === "prices" && <div className="modal-content"><div className="modal-kpis price-kpis"><div className="sogamax-kpi"><span>Preço praticado Sogamax</span><strong>{money(data.sogamaxPrice)}</strong><small>demonstrativo</small></div><div><span>Menor preço do mercado</span><strong>{money(minimum.price)}</strong><small>{minimum.competitor} · {minimum.brand}</small></div><div><span>Preço médio do mercado</span><strong>{money(average)}</strong></div><div><span>Maior preço do mercado</span><strong>{money(maximum.price)}</strong></div></div><div className="winner-banner"><span>MENOR PREÇO GERAL</span><strong>{absoluteMinimum === data.sogamaxPrice ? "SOGAMAX" : minimum.competitor}</strong><small>{absoluteMinimum === data.sogamaxPrice ? "Preço praticado Sogamax" : minimum.brand} · {money(absoluteMinimum)}</small></div><div className="popup-table-wrap"><table className="popup-table"><thead><tr><th>Empresa</th><th>Marca</th><th>Apresentação</th><th>Preço</th><th>Comparação</th></tr></thead><tbody>{allPrices.sort((a, b) => a.price - b.price).map((offer, index) => <tr key={`${offer.competitor}-${offer.price}`} className={offer.competitor === "SOGAMAX" ? "sogamax-row" : ""}><td><strong>{offer.competitor}</strong></td><td>{offer.brand}</td><td>{offer.unit}{offer.packSize > 1 ? ` C/${offer.packSize}` : ""}</td><td><strong>{money(offer.price)}</strong></td><td>{index === 0 ? <span className="best-price">Menor preço</span> : <span className="price-delta">+{((offer.price / absoluteMinimum - 1) * 100).toFixed(1).replace(".", ",")}%</span>}</td></tr>)}</tbody></table></div><div className="modal-note">O preço Sogamax está demonstrativo neste protótipo. Na versão integrada, será recebido automaticamente da fonte oficial de preços praticados.</div></div>}
+    {kind === "demands" && <div className="modal-content"><div className="modal-kpis"><div><span>Demanda convertida</span><strong>{totalDemand.toLocaleString("pt-BR")} {offers[0]?.baseUnit}</strong></div><div><span>Registros convertidos</span><strong>{converted.length}</strong></div><div><span>Aguardando regra</span><strong>{pending.length}</strong></div><div><span>Unidade-base</span><strong>{offers[0]?.baseUnit}</strong></div></div><div className="popup-table-wrap"><table className="popup-table"><thead><tr><th>Concorrente</th><th>Demanda original</th><th>Regra aplicada</th><th>Demanda padronizada</th><th>Situação</th></tr></thead><tbody>{offers.map((offer) => <tr key={`${offer.competitor}-${offer.quantity}`}><td><strong>{offer.competitor}</strong></td><td>{offer.quantity.toLocaleString("pt-BR")} {offer.unit}</td><td>{offer.packSize === null ? "Não definida" : offer.packSize === 1 ? "1 × 1" : `1 ${offer.unit} = ${offer.packSize} ${offer.baseUnit}`}</td><td><strong>{offer.packSize === null ? "—" : `${(offer.quantity * offer.packSize).toLocaleString("pt-BR")} ${offer.baseUnit}`}</strong></td><td>{offer.packSize === null ? <span className="conversion pending">Validar conversão</span> : <span className="conversion ok">Convertido</span>}</td></tr>)}</tbody></table></div>{pending.length > 0 && <div className="conversion-alert"><strong>{pending.length} registro fora do total.</strong><span>Quantidades sem fator confirmado não são somadas.</span></div>}</div>}
+    {kind === "brands" && <div className="modal-content"><div className="brand-summary"><div><span className="eyebrow">MARCAS ENCONTRADAS</span><strong>{brands.length}</strong><p>Visão consolidada das marcas oferecidas para esta descrição padronizada.</p></div><div className="brand-ring" style={{ "--brand-count": brands.length } as React.CSSProperties}><span>{brands.length}</span><small>marcas</small></div></div><div className="brand-grid">{brands.map((brand, index) => <article key={brand.brand}><div className="brand-rank">0{index + 1}</div><div><h3>{brand.brand}</h3><p>{brand.competitor}</p></div><dl><div><dt>Preço médio</dt><dd>{money(brand.average)}</dd></div><div><dt>Demanda convertida</dt><dd>{brand.demand.toLocaleString("pt-BR")} {offers[0]?.baseUnit}</dd></div></dl></article>)}</div></div>}
+  </section></div>;
 }
