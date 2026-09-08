@@ -28,7 +28,7 @@ type MarketOffer = {
   baseUnit: string;
 };
 
-type ProductData = { sogamaxPrice: number; sogamaxCmv: number; offers: MarketOffer[] };
+type ProductData = { sogamaxPrice: number; sogamaxCost: number; offers: MarketOffer[] };
 
 const rows: DescriptionRow[] = [
   { id: 1, marketDescription: "ABAIXADOR LINGUA MADEIRA PCT 100 UND", standardDescription: "ABAIXADOR DE LINGUA EM MADEIRA C/100", repetitions: 14, confidence: 96.8, status: "Padronizado", evidence: ["Termos principais equivalentes", "Apresentação C/100 preservada", "Descrição localizada na base Sogamax"] },
@@ -42,39 +42,39 @@ const rows: DescriptionRow[] = [
 ];
 
 const productData: Record<number, ProductData> = {
-  1: { sogamaxPrice: 8.90, sogamaxCmv: 6.34, offers: [
+  1: { sogamaxPrice: 8.90, sogamaxCost: 6.34, offers: [
     { competitor: "Fornecedor Alfa", brand: "THEOTO", price: 8.42, quantity: 60, unit: "PACOTE", packSize: 100, baseUnit: "UN" },
     { competitor: "Fornecedor Beta", brand: "ESTILO", price: 9.18, quantity: 4200, unit: "UN", packSize: 1, baseUnit: "UN" },
     { competitor: "Fornecedor Delta", brand: "TALGE", price: 8.76, quantity: 35, unit: "PACOTE", packSize: 100, baseUnit: "UN" },
   ]},
-  2: { sogamaxPrice: 18.70, sogamaxCmv: 13.82, offers: [
+  2: { sogamaxPrice: 18.70, sogamaxCost: 13.82, offers: [
     { competitor: "Fornecedor Alfa", brand: "MAXI CONFORT", price: 19.10, quantity: 28, unit: "PACOTE", packSize: 20, baseUnit: "UN" },
     { competitor: "Fornecedor Gama", brand: "BIGFRAL", price: 17.95, quantity: 600, unit: "UN", packSize: 1, baseUnit: "UN" },
     { competitor: "Fornecedor Ômega", brand: "PLENITUD", price: 20.30, quantity: 12, unit: "FARDO", packSize: null, baseUnit: "UN" },
   ]},
-  3: { sogamaxPrice: 14.55, sogamaxCmv: 10.41, offers: [
+  3: { sogamaxPrice: 14.55, sogamaxCost: 10.41, offers: [
     { competitor: "Fornecedor Beta", brand: "ACHE", price: 15.20, quantity: 45, unit: "FRASCO", packSize: 1, baseUnit: "FR" },
     { competitor: "Fornecedor Delta", brand: "CIMED", price: 13.88, quantity: 80, unit: "FRASCO", packSize: 1, baseUnit: "FR" },
     { competitor: "Fornecedor Gama", brand: "GEOLAB", price: 14.76, quantity: 9, unit: "CAIXA", packSize: 1, baseUnit: "FR" },
   ]},
-  4: { sogamaxPrice: 16.20, sogamaxCmv: 11.76, offers: [
+  4: { sogamaxPrice: 16.20, sogamaxCost: 11.76, offers: [
     { competitor: "Fornecedor Alfa", brand: "EMS", price: 15.65, quantity: 32, unit: "FRASCO", packSize: 1, baseUnit: "FR" },
     { competitor: "Fornecedor Beta", brand: "ACHE", price: 17.40, quantity: 20, unit: "FRASCO", packSize: 1, baseUnit: "FR" },
   ]},
-  5: { sogamaxPrice: 0.18, sogamaxCmv: 0.11, offers: [
+  5: { sogamaxPrice: 0.18, sogamaxCost: 0.11, offers: [
     { competitor: "Fornecedor Delta", brand: "BRASTERAPICA", price: 0.16, quantity: 2500, unit: "COMP", packSize: 1, baseUnit: "COMP" },
     { competitor: "Fornecedor Gama", brand: "EMS", price: 0.19, quantity: 40, unit: "CAIXA", packSize: 30, baseUnit: "COMP" },
   ]},
-  6: { sogamaxPrice: 0.74, sogamaxCmv: 0.48, offers: [
+  6: { sogamaxPrice: 0.74, sogamaxCost: 0.48, offers: [
     { competitor: "Fornecedor Alfa", brand: "SAMTEC", price: 0.69, quantity: 1200, unit: "AMPOLA", packSize: 1, baseUnit: "AMP" },
     { competitor: "Fornecedor Ômega", brand: "EQUIPLEX", price: 0.78, quantity: 30, unit: "CAIXA", packSize: 200, baseUnit: "AMP" },
   ]},
-  7: { sogamaxPrice: 0.12, sogamaxCmv: 0.08, offers: [
+  7: { sogamaxPrice: 0.12, sogamaxCost: 0.08, offers: [
     { competitor: "Fornecedor Beta", brand: "DESCARPACK", price: 0.11, quantity: 6000, unit: "UN", packSize: 1, baseUnit: "UN" },
     { competitor: "Fornecedor Delta", brand: "SR", price: 0.13, quantity: 50, unit: "CAIXA", packSize: 100, baseUnit: "UN" },
     { competitor: "Fornecedor Gama", brand: "INJEX", price: 0.12, quantity: 40, unit: "CAIXA", packSize: 100, baseUnit: "UN" },
   ]},
-  8: { sogamaxPrice: 3.36, sogamaxCmv: 2.29, offers: [
+  8: { sogamaxPrice: 3.36, sogamaxCost: 2.29, offers: [
     { competitor: "Fornecedor Alfa", brand: "EUROFARMA", price: 3.25, quantity: 240, unit: "ENVELOPE", packSize: 1, baseUnit: "ENV" },
     { competitor: "Fornecedor Ômega", brand: "EMS", price: 3.58, quantity: 20, unit: "CAIXA", packSize: 16, baseUnit: "ENV" },
   ]},
@@ -230,7 +230,7 @@ function ProductPopup({ kind, row, data, onChange, onClose }: { kind: PopupKind;
   const absoluteMinimum = Math.min(...allPrices.map((offer) => offer.price));
 
   return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className="market-modal" role="dialog" aria-modal="true"><header className="modal-header"><div><span className="eyebrow">DETALHES DO PRODUTO</span><h2>{row.standardDescription}</h2><p>Recebido como: {row.marketDescription} · aparece {row.repetitions} vezes</p></div><button className="modal-close" onClick={onClose} aria-label="Fechar">×</button></header><div className="modal-tabs"><button className={kind === "prices" ? "active" : ""} onClick={() => onChange("prices")}>Preços</button><button className={kind === "demands" ? "active" : ""} onClick={() => onChange("demands")}>Demanda padronizada</button><button className={kind === "brands" ? "active" : ""} onClick={() => onChange("brands")}>Marcas</button></div>
-    {kind === "prices" && <div className="modal-content"><div className="modal-kpis price-kpis"><div className="sogamax-kpi"><span>Preço praticado Sogamax</span><strong>{money(data.sogamaxPrice)}</strong><small>demonstrativo</small></div><div><span>Menor preço do mercado</span><strong>{money(minimum.price)}</strong><small>{minimum.competitor} · {minimum.brand}</small></div><div><span>Preço médio do mercado</span><strong>{money(average)}</strong></div><div><span>Maior preço do mercado</span><strong>{money(maximum.price)}</strong></div></div><div className="winner-banner"><span>MENOR PREÇO GERAL</span><strong>{absoluteMinimum === data.sogamaxPrice ? "SOGAMAX" : minimum.competitor}</strong><small>{absoluteMinimum === data.sogamaxPrice ? "Preço praticado Sogamax" : minimum.brand} · {money(absoluteMinimum)}</small></div><div className="popup-table-wrap"><table className="popup-table"><thead><tr><th>Empresa</th><th>Marca</th><th>Apresentação</th><th>Preço</th><th>Nosso CMV</th></tr></thead><tbody>{allPrices.sort((a, b) => a.price - b.price).map((offer) => <tr key={`${offer.competitor}-${offer.price}`} className={offer.competitor === "SOGAMAX" ? "sogamax-row" : ""}><td><strong>{offer.competitor}</strong></td><td>{offer.brand}</td><td>{offer.unit}{offer.packSize > 1 ? ` C/${offer.packSize}` : ""}</td><td><strong>{money(offer.price)}</strong></td><td><strong className="cmv-value">{money(data.sogamaxCmv)}</strong><small className="cmv-source">custo atual Sogamax</small></td></tr>)}</tbody></table></div><div className="modal-note">A coluna “Nosso CMV” substitui “Comparação” e apresenta o custo atual da Sogamax para confrontar cada preço do mercado. Os valores continuam demonstrativos neste protótipo; na versão integrada, o CMV virá do ERP.</div></div>}
+    {kind === "prices" && <div className="modal-content"><div className="modal-kpis price-kpis"><div className="sogamax-kpi"><span>Preço praticado Sogamax</span><strong>{money(data.sogamaxPrice)}</strong><small>demonstrativo</small></div><div><span>Menor preço do mercado</span><strong>{money(minimum.price)}</strong><small>{minimum.competitor} · {minimum.brand}</small></div><div><span>Preço médio do mercado</span><strong>{money(average)}</strong></div><div><span>Maior preço do mercado</span><strong>{money(maximum.price)}</strong></div></div><div className="winner-banner"><span>MENOR PREÇO GERAL</span><strong>{absoluteMinimum === data.sogamaxPrice ? "SOGAMAX" : minimum.competitor}</strong><small>{absoluteMinimum === data.sogamaxPrice ? "Preço praticado Sogamax" : minimum.brand} · {money(absoluteMinimum)}</small></div><div className="popup-table-wrap"><table className="popup-table"><thead><tr><th>Empresa</th><th>Marca</th><th>Apresentação</th><th>Preço de venda</th><th>Nosso CMV</th></tr></thead><tbody>{allPrices.sort((a, b) => a.price - b.price).map((offer) => { const cmv = data.sogamaxCost / offer.price * 100; return <tr key={`${offer.competitor}-${offer.price}`} className={offer.competitor === "SOGAMAX" ? "sogamax-row" : ""}><td><strong>{offer.competitor}</strong></td><td>{offer.brand}</td><td>{offer.unit}{offer.packSize > 1 ? ` C/${offer.packSize}` : ""}</td><td><strong>{money(offer.price)}</strong></td><td><strong className="cmv-value">{cmv.toFixed(2).replace(".", ",")}%</strong><small className="cmv-source">custo ÷ preço de venda</small></td></tr> })}</tbody></table></div><div className="modal-note">CMV = custo atual Sogamax ÷ preço de venda × 100. O percentual é recalculado para o preço praticado pela Sogamax e para cada preço concorrente. Os dados permanecem demonstrativos no protótipo; na versão integrada, o custo atual virá do ERP.</div></div>}
     {kind === "demands" && <div className="modal-content"><div className="modal-kpis"><div><span>Demanda convertida</span><strong>{totalDemand.toLocaleString("pt-BR")} {offers[0]?.baseUnit}</strong></div><div><span>Registros convertidos</span><strong>{converted.length}</strong></div><div><span>Aguardando regra</span><strong>{pending.length}</strong></div><div><span>Unidade-base</span><strong>{offers[0]?.baseUnit}</strong></div></div><div className="popup-table-wrap"><table className="popup-table"><thead><tr><th>Concorrente</th><th>Demanda original</th><th>Regra aplicada</th><th>Demanda padronizada</th><th>Situação</th></tr></thead><tbody>{offers.map((offer) => <tr key={`${offer.competitor}-${offer.quantity}`}><td><strong>{offer.competitor}</strong></td><td>{offer.quantity.toLocaleString("pt-BR")} {offer.unit}</td><td>{offer.packSize === null ? "Não definida" : offer.packSize === 1 ? "1 × 1" : `1 ${offer.unit} = ${offer.packSize} ${offer.baseUnit}`}</td><td><strong>{offer.packSize === null ? "—" : `${(offer.quantity * offer.packSize).toLocaleString("pt-BR")} ${offer.baseUnit}`}</strong></td><td>{offer.packSize === null ? <span className="conversion pending">Validar conversão</span> : <span className="conversion ok">Convertido</span>}</td></tr>)}</tbody></table></div>{pending.length > 0 && <div className="conversion-alert"><strong>{pending.length} registro fora do total.</strong><span>Quantidades sem fator confirmado não são somadas.</span></div>}</div>}
     {kind === "brands" && <div className="modal-content"><div className="brand-summary"><div><span className="eyebrow">MARCAS ENCONTRADAS</span><strong>{brands.length}</strong><p>Visão consolidada das marcas oferecidas para esta descrição padronizada.</p></div><div className="brand-ring" style={{ "--brand-count": brands.length } as React.CSSProperties}><span>{brands.length}</span><small>marcas</small></div></div><div className="brand-grid">{brands.map((brand, index) => <article key={brand.brand}><div className="brand-rank">0{index + 1}</div><div><h3>{brand.brand}</h3><p>{brand.competitor}</p></div><dl><div><dt>Preço médio</dt><dd>{money(brand.average)}</dd></div><div><dt>Demanda convertida</dt><dd>{brand.demand.toLocaleString("pt-BR")} {offers[0]?.baseUnit}</dd></div></dl></article>)}</div></div>}
   </section></div>;
