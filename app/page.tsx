@@ -40,7 +40,6 @@ type NormalizedOffer = MarketOffer & {
   originalPrice: number;
   normalizedPrice: number;
   clientPresentation: number;
-  sogamaxPresentation: number;
   priceBasis: "Embalagem" | "Unidade básica";
   conversionRule: string;
 };
@@ -128,26 +127,19 @@ function sogamaxPresentation(description: string) {
   );
 }
 
-function normalizeOffer(
-  offer: MarketOffer,
-  standardDescription: string,
-): NormalizedOffer {
+function normalizeOffer(offer: MarketOffer): NormalizedOffer {
   const clientPresentation = Math.max(1, Number(offer.packSize) || 1);
-  const targetPresentation = sogamaxPresentation(standardDescription);
   const priceBasis = containerUnits.has(normalizedUnit(offer.unit))
     ? "Embalagem"
     : "Unidade básica";
-  const factor =
+  const normalizedPrice =
     priceBasis === "Embalagem"
-      ? targetPresentation / clientPresentation
-      : targetPresentation;
-  const normalizedPrice = offer.price * factor;
+      ? offer.price / clientPresentation
+      : offer.price;
   const conversionRule =
     priceBasis === "Embalagem"
-      ? `${money(offer.price)} × ${targetPresentation} ÷ ${clientPresentation}`
-      : targetPresentation === 1
-        ? "Preço já informado por unidade básica"
-        : `${money(offer.price)} × ${targetPresentation}`;
+      ? `${money(offer.price)} ÷ ${clientPresentation}`
+      : "Preço já informado por unidade básica";
 
   return {
     ...offer,
@@ -155,7 +147,6 @@ function normalizeOffer(
     originalPrice: offer.price,
     normalizedPrice,
     clientPresentation,
-    sogamaxPresentation: targetPresentation,
     priceBasis,
     conversionRule,
   };
@@ -163,10 +154,7 @@ function normalizeOffer(
 
 function priceSummary(id: number) {
   const data = productData[id];
-  const row = rows.find((item) => item.id === id);
-  const offers = data.offers.map((offer) =>
-    normalizeOffer(offer, row?.standardDescription ?? ""),
-  );
+  const offers = data.offers.map((offer) => normalizeOffer(offer));
   const ordered = [...offers].sort(
     (a, b) => a.normalizedPrice - b.normalizedPrice,
   );
@@ -701,7 +689,7 @@ export default function Home() {
                     <thead>
                       <tr>
                         <th>Descrição recebida → padrão Sogamax</th>
-                        <th>Menor preço equalizado</th>
+                        <th>Menor preço unitário</th>
                         <th>CMV</th>
                         <th>Concorrente / marca</th>
                         <th>Preço Sogamax</th>
@@ -751,10 +739,7 @@ export default function Home() {
                             </td>
                             <td>
                               <strong>{money(info.lowest.price)}</strong>
-                              <small>
-                                apresentação Sogamax C/
-                                {info.lowest.sogamaxPresentation}
-                              </small>
+                              <small>unidade básica comparável</small>
                             </td>
                             <td>
                               <strong className="table-cmv">
@@ -966,7 +951,7 @@ function ProductPopup({
   onClose: () => void;
 }) {
   const offers = data.offers
-    .map((offer) => normalizeOffer(offer, row.standardDescription))
+    .map((offer) => normalizeOffer(offer))
     .sort((a, b) => a.price - b.price);
   const converted = offers.filter((offer) => offer.quantity > 0);
   const pending = offers.filter((offer) => offer.quantity <= 0);
@@ -993,9 +978,8 @@ function ProductPopup({
       unit: "Referência interna",
       packSize: 1,
       clientPresentation: sogamaxPresentation(row.standardDescription),
-      sogamaxPresentation: sogamaxPresentation(row.standardDescription),
-      priceBasis: "Embalagem" as const,
-      conversionRule: "Preço da apresentação Sogamax",
+      priceBasis: "Unidade básica" as const,
+      conversionRule: "Preço unitário Sogamax",
     },
     ...offers,
   ];
@@ -1052,7 +1036,7 @@ function ProductPopup({
                     <th>Apresentação do cliente</th>
                     <th>Preço original</th>
                     <th>Regra aplicada</th>
-                    <th>Preço equalizado</th>
+                    <th>Preço unitário</th>
                     <th>CMV Sogamax</th>
                   </tr>
                 </thead>
@@ -1106,11 +1090,10 @@ function ProductPopup({
               </table>
             </div>
             <div className="modal-note">
-              Ranking calculado depois de equalizar cada preço para a
-              apresentação Sogamax C/
-              {sogamaxPresentation(row.standardDescription)}. Caixa, pacote e
-              fardo são convertidos proporcionalmente. Ampola, frasco,
-              comprimido e unidade são tratados como preço unitário.
+              Ranking calculado pela unidade básica. Quando o cliente informa o
+              preço de uma caixa, pacote ou fardo, o valor é dividido pela
+              quantidade contida. Ampola, frasco, comprimido e unidade mantêm o
+              preço informado.
             </div>
           </div>
         )}
