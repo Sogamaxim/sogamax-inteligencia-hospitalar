@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import realData from "./market-data.json";
+import medicalVmUnitMap from "./medicalvm-unit-map.json";
+import quarantinedMatches from "./quarantined-matches.json";
 import sogamaxPresentations from "./sogamax-presentations.json";
 
 type View = "dashboard" | "schedule" | "validation" | "export";
@@ -33,20 +35,55 @@ type ProductData = {
   sogamaxPrice: number;
   sogamaxCost: number;
   lastPurchaseCost: number;
+  sogamaxProductId?: number;
+  sogamaxPresentation?: number;
+  sogamaxPriceSource?: string;
   offers: MarketOffer[];
 };
 
 type NormalizedOffer = MarketOffer & {
   originalPrice: number;
   normalizedPrice: number;
+  standardizedUnit: string;
   clientPresentation: number;
   priceBasis: "Embalagem" | "Unidade básica";
   conversionRule: string;
 };
 
-const rows = realData.rows as DescriptionRow[];
-const productData = realData.productData as Record<number, ProductData>;
-const summaryData = realData.summary;
+const quarantinedById = quarantinedMatches as Record<string, string[]>;
+const rows = (realData.rows as DescriptionRow[]).map((row) =>
+  quarantinedById[String(row.id)]
+    ? {
+        ...row,
+        standardDescription: "Revisar — característica incompatível",
+        confidence: 0,
+        status: "Revisar" as const,
+        evidence: quarantinedById[String(row.id)],
+      }
+    : row,
+);
+const productData = Object.fromEntries(
+  Object.entries(realData.productData as Record<number, ProductData>).map(
+    ([id, data]) => [
+      id,
+      quarantinedById[id]
+        ? { ...data, sogamaxPrice: 0, sogamaxCost: 0, lastPurchaseCost: 0 }
+        : data,
+    ],
+  ),
+) as Record<number, ProductData>;
+const statusCounts = rows.reduce(
+  (counts, row) => ({ ...counts, [row.status]: counts[row.status] + 1 }),
+  { Padronizado: 0, Provável: 0, Revisar: 0 } as Record<MatchStatus, number>,
+);
+const summaryData = {
+  ...realData.summary,
+  statusCounts,
+  matchedMarketLines: rows.reduce(
+    (total, row) => total + (row.status === "Revisar" ? 0 : row.repetitions),
+    0,
+  ),
+};
 const formatCount = (value: number) => value.toLocaleString("pt-BR");
 
 const processedFiles = [
@@ -100,16 +137,27 @@ const money = (value: number) =>
     : "—";
 
 const containerUnits = new Set([
-  "CX",
   "CAIXA",
-  "FD",
-  "FDO",
   "FARDO",
-  "PCT",
-  "PCTE",
   "PACOTE",
   "PACK",
 ]);
+
+const medicalVmUnits = medicalVmUnitMap.mappings as Record<string, string>;
+
+function medicalVmUnitKey(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, " ");
+}
+
+function standardizedMedicalVmUnit(value: string) {
+  const received = String(value ?? "").trim();
+  return medicalVmUnits[medicalVmUnitKey(received)] || received || "Não informado";
+}
 
 function normalizedUnit(value: string) {
   return value
@@ -127,9 +175,17 @@ function sogamaxPresentation(description: string) {
   );
 }
 
+function productPresentation(row: DescriptionRow, data: ProductData) {
+  return Math.max(
+    1,
+    Number(data.sogamaxPresentation) || sogamaxPresentation(row.standardDescription),
+  );
+}
+
 function normalizeOffer(offer: MarketOffer): NormalizedOffer {
   const clientPresentation = Math.max(1, Number(offer.packSize) || 1);
-  const priceBasis = containerUnits.has(normalizedUnit(offer.unit))
+  const standardizedUnit = standardizedMedicalVmUnit(offer.unit);
+  const priceBasis = containerUnits.has(normalizedUnit(standardizedUnit))
     ? "Embalagem"
     : "Unidade básica";
   const normalizedPrice =
@@ -138,14 +194,15 @@ function normalizeOffer(offer: MarketOffer): NormalizedOffer {
       : offer.price;
   const conversionRule =
     priceBasis === "Embalagem"
-      ? `${money(offer.price)} ÷ ${clientPresentation}`
-      : "Preço já informado por unidade básica";
+      ? `${standardizedUnit}: ${money(offer.price)} ÷ ${clientPresentation}`
+      : `${standardizedUnit}: preço já informado por unidade básica`;
 
   return {
     ...offer,
     price: normalizedPrice,
     originalPrice: offer.price,
     normalizedPrice,
+    standardizedUnit,
     clientPresentation,
     priceBasis,
     conversionRule,
@@ -758,7 +815,7 @@ export default function Home() {
                               </strong>
                               <small>
                                 {mapped
-                                  ? `apresentação C/${sogamaxPresentation(row.standardDescription)}`
+                                  ? `unidade básica · cadastro ID ${info.data.sogamaxProductId ?? "validado"}`
                                   : "aguardando validação"}
                               </small>
                             </td>
@@ -976,10 +1033,11 @@ function ProductPopup({
       originalPrice: data.sogamaxPrice,
       normalizedPrice: data.sogamaxPrice,
       unit: "Referência interna",
+      standardizedUnit: "Unidade básica",
       packSize: 1,
-      clientPresentation: sogamaxPresentation(row.standardDescription),
+      clientPresentation: productPresentation(row, data),
       priceBasis: "Unidade básica" as const,
-      conversionRule: "Preço unitário Sogamax",
+      conversionRule: `${data.sogamaxPriceSource ?? "Cadastro Sogamax"} · ID ${data.sogamaxProductId ?? "validado"} · apresentação C/${productPresentation(row, data)}`,
     },
     ...offers,
   ];
@@ -1061,11 +1119,16 @@ function ProductPopup({
                         </td>
                         <td>{offer.brand}</td>
                         <td>
-                          {offer.unit}
+                          {offer.standardizedUnit}
                           {offer.clientPresentation > 1
                             ? ` C/${offer.clientPresentation}`
                             : ""}
-                          <small>{offer.priceBasis}</small>
+                          <small>
+                            {offer.unit !== offer.standardizedUnit
+                              ? `Recebido: ${offer.unit} · `
+                              : ""}
+                            {offer.priceBasis}
+                          </small>
                         </td>
                         <td>
                           <strong>{money(offer.originalPrice)}</strong>
@@ -1137,7 +1200,7 @@ function ProductPopup({
                         <strong>{offer.competitor}</strong>
                       </td>
                       <td>
-                        {offer.quantity.toLocaleString("pt-BR")} {offer.unit}
+                        {offer.quantity.toLocaleString("pt-BR")} {offer.standardizedUnit}
                       </td>
                       <td>Quantidade já informada em {offer.baseUnit}</td>
                       <td>
