@@ -44,6 +44,9 @@ type ProductData = {
 type NormalizedOffer = MarketOffer & {
   originalPrice: number;
   normalizedPrice: number;
+  effectivePrice: number;
+  conversionCmv: number | null;
+  usedFullPrice: boolean;
   standardizedUnit: string;
   clientPresentation: number;
   priceBasis: "Embalagem" | "Unidade básica";
@@ -182,6 +185,8 @@ function productPresentation(row: DescriptionRow, data: ProductData) {
   );
 }
 
+const FULL_PRICE_CMV_THRESHOLD = 30;
+
 function normalizeOffer(offer: MarketOffer): NormalizedOffer {
   const clientPresentation = Math.max(1, Number(offer.packSize) || 1);
   const standardizedUnit = standardizedMedicalVmUnit(offer.unit);
@@ -202,6 +207,9 @@ function normalizeOffer(offer: MarketOffer): NormalizedOffer {
     price: normalizedPrice,
     originalPrice: offer.price,
     normalizedPrice,
+    effectivePrice: normalizedPrice,
+    conversionCmv: null,
+    usedFullPrice: false,
     standardizedUnit,
     clientPresentation,
     priceBasis,
@@ -211,16 +219,38 @@ function normalizeOffer(offer: MarketOffer): NormalizedOffer {
 
 function priceSummary(id: number) {
   const data = productData[id];
-  const offers = data.offers.map((offer) => normalizeOffer(offer));
-  const ordered = [...offers].sort(
-    (a, b) => a.normalizedPrice - b.normalizedPrice,
-  );
+  const offers = data.offers.map((offer) => {
+    const normalized = normalizeOffer(offer);
+    const conversionCmv =
+      data.sogamaxCost > 0 && normalized.normalizedPrice > 0
+        ? (data.sogamaxCost / normalized.normalizedPrice) * 100
+        : null;
+    const usedFullPrice =
+      normalized.priceBasis === "Embalagem" &&
+      conversionCmv !== null &&
+      conversionCmv < FULL_PRICE_CMV_THRESHOLD;
+    const effectivePrice = usedFullPrice
+      ? normalized.originalPrice
+      : normalized.normalizedPrice;
+
+    return {
+      ...normalized,
+      price: effectivePrice,
+      effectivePrice,
+      conversionCmv,
+      usedFullPrice,
+      conversionRule: usedFullPrice
+        ? `${normalized.conversionRule} · CMV após conversão ${conversionCmv.toFixed(2).replace(".", ",")}% < ${FULL_PRICE_CMV_THRESHOLD}% → considerado preço cheio`
+        : normalized.conversionRule,
+    };
+  });
+  const ordered = [...offers].sort((a, b) => a.price - b.price);
   return {
     data,
     offers,
     lowest: ordered[0],
     average:
-      ordered.reduce((sum, offer) => sum + offer.normalizedPrice, 0) /
+      ordered.reduce((sum, offer) => sum + offer.price, 0) /
       ordered.length,
   };
 }
@@ -254,7 +284,7 @@ function downloadCsv(approved: number[]) {
       row.standardDescription,
       row.repetitions,
       `${row.confidence.toFixed(1).replace(".", ",")}%`,
-      lowest.normalizedPrice.toFixed(2).replace(".", ","),
+      lowest.price.toFixed(2).replace(".", ","),
       lowest.competitor,
       lowest.brand,
       data.sogamaxPrice.toFixed(2).replace(".", ","),
@@ -1007,9 +1037,7 @@ function ProductPopup({
   onChange: (kind: PopupKind) => void;
   onClose: () => void;
 }) {
-  const offers = data.offers
-    .map((offer) => normalizeOffer(offer))
-    .sort((a, b) => a.price - b.price);
+  const offers = priceSummary(row.id).offers;
   const converted = offers.filter((offer) => offer.quantity > 0);
   const pending = offers.filter((offer) => offer.quantity <= 0);
   // QUANTIDADE já vem na unidade básica do mercado. QTDE_EMBALAGEM descreve a
