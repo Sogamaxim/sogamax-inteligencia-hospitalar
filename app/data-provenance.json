@@ -1,0 +1,42 @@
+{
+  "generatedAt": "2026-10-06",
+  "sources": {
+    "medicalVmSeptember": {
+      "file": "LINEASLICITACION_13806_02102026.42511902102026.csv",
+      "sha256": "a3712995e8ab33fa28c85e9133e421012f6471411f0a58b467abc3e6b4264c48",
+      "rows": 173495
+    },
+    "deParaSeptember": {
+      "file": "DE-PARA SETEMBRO - INTELIGÊNCIA ARTIFICIAL.xlsx",
+      "sha256": "903eb0b378b9ef184936114bcdaeaa3ebf52fc3fdbf1cdd59eeb3d0949edd0a4",
+      "rows": 14318
+    },
+    "sogamaxPrices": {
+      "file": "651 - TB ROBÔ PLATAFORMAS.xlsx",
+      "sha256": "227ba660630b58d9de81891ccc4007d839f391a4bc63286366bc77a29dd592bd",
+      "rows": 5053
+    },
+    "sogamaxPresentations": {
+      "file": "Planilha_de_Apresentacao_dos_Produtos_preenchida_v2.xlsx",
+      "sha256": "be13fa06cac741819c010c8e9343a69af9fef764e606aca63551e1ce429f4270",
+      "rows": 4854
+    }
+  },
+  "result": {
+    "marketDataSha256": "c63108cad841e25d5a15fdac4a55e422a25eb59bf7c79d69bb3d064460dbab1b",
+    "marketDataGzipSha256": "55ddaaa02d49cdbf987f476c0e747a2abae375176633cce760fefa9a0d4effb4",
+    "cleanDescriptions": 16444,
+    "standardized": 3918,
+    "review": 12526,
+    "resolution": {
+      "exact": 3585,
+      "semanticConservative": 353,
+      "incompatible": 633,
+      "ambiguousOfficialTarget": 135,
+      "contradictoryMapping": 11,
+      "missingOfficialTarget": 56,
+      "explicitNoMatch": 8621,
+      "absentFromMapping": 3050
+    }
+  }
+}

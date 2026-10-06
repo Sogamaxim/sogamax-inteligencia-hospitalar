@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import realData from "./market-data.json";
 import medicalVmUnitMap from "./medicalvm-unit-map.json";
 import quarantinedMatches from "./quarantined-matches.json";
 import sogamaxPresentations from "./sogamax-presentations.json";
@@ -29,6 +28,7 @@ type MarketOffer = {
   unit: string;
   packSize: number | null;
   baseUnit: string;
+  selected: boolean;
 };
 
 type ProductData = {
@@ -37,8 +37,25 @@ type ProductData = {
   lastPurchaseCost: number;
   sogamaxProductId?: number;
   sogamaxPresentation?: number;
+  sogamaxBrand?: string;
+  sogamaxFullPrice?: number;
+  sogamaxFullCost?: number;
   sogamaxPriceSource?: string;
   offers: MarketOffer[];
+};
+
+type MarketData = {
+  summary: {
+    marketLines: number;
+    matchedMarketLines: number;
+    cleanDescriptions: number;
+    sogamaxReferences: number;
+    statusCounts: Record<MatchStatus, number>;
+    marketFile: string;
+    period: string;
+  };
+  rows: DescriptionRow[];
+  productData: Record<string, ProductData>;
 };
 
 type NormalizedOffer = MarketOffer & {
@@ -54,39 +71,44 @@ type NormalizedOffer = MarketOffer & {
 };
 
 const quarantinedById = quarantinedMatches as Record<string, string[]>;
-const rows = (realData.rows as DescriptionRow[]).map((row) =>
-  quarantinedById[String(row.id)]
-    ? {
-        ...row,
-        standardDescription: "Revisar — característica incompatível",
-        confidence: 0,
-        status: "Revisar" as const,
-        evidence: quarantinedById[String(row.id)],
-      }
-    : row,
-);
-const productData = Object.fromEntries(
-  Object.entries(realData.productData as Record<number, ProductData>).map(
-    ([id, data]) => [
+
+function prepareMarketData(realData: MarketData) {
+  const rows = realData.rows.map((row) =>
+    quarantinedById[String(row.id)]
+      ? {
+          ...row,
+          standardDescription: "Revisar — característica incompatível",
+          confidence: 0,
+          status: "Revisar" as const,
+          evidence: quarantinedById[String(row.id)],
+        }
+      : row,
+  );
+  const productData = Object.fromEntries(
+    Object.entries(realData.productData).map(([id, data]) => [
       id,
       quarantinedById[id]
         ? { ...data, sogamaxPrice: 0, sogamaxCost: 0, lastPurchaseCost: 0 }
         : data,
-    ],
-  ),
-) as Record<number, ProductData>;
-const statusCounts = rows.reduce(
-  (counts, row) => ({ ...counts, [row.status]: counts[row.status] + 1 }),
-  { Padronizado: 0, Provável: 0, Revisar: 0 } as Record<MatchStatus, number>,
-);
-const summaryData = {
-  ...realData.summary,
-  statusCounts,
-  matchedMarketLines: rows.reduce(
-    (total, row) => total + (row.status === "Revisar" ? 0 : row.repetitions),
-    0,
-  ),
-};
+    ]),
+  ) as Record<number, ProductData>;
+  const statusCounts = rows.reduce(
+    (counts, row) => ({ ...counts, [row.status]: counts[row.status] + 1 }),
+    { Padronizado: 0, Provável: 0, Revisar: 0 } as Record<MatchStatus, number>,
+  );
+  return {
+    rows,
+    productData,
+    summaryData: {
+      ...realData.summary,
+      statusCounts,
+      matchedMarketLines: rows.reduce(
+        (total, row) => total + (row.status === "Revisar" ? 0 : row.repetitions),
+        0,
+      ),
+    },
+  };
+}
 const formatCount = (value: number) => value.toLocaleString("pt-BR");
 
 const processedFiles = [
@@ -217,8 +239,7 @@ function normalizeOffer(offer: MarketOffer): NormalizedOffer {
   };
 }
 
-function priceSummary(id: number) {
-  const data = productData[id];
+function summarizeProduct(data: ProductData) {
   const offers = data.offers.map((offer) => {
     const normalized = normalizeOffer(offer);
     const conversionCmv =
@@ -255,7 +276,15 @@ function priceSummary(id: number) {
   };
 }
 
-function downloadCsv(approved: number[]) {
+function priceSummary(id: number, productData: Record<number, ProductData>) {
+  return summarizeProduct(productData[id]);
+}
+
+function downloadCsv(
+  approved: number[],
+  rows: DescriptionRow[],
+  productData: Record<number, ProductData>,
+) {
   const header = [
     "descricao_recebida",
     "descricao_padronizada_sogamax",
@@ -270,10 +299,9 @@ function downloadCsv(approved: number[]) {
     "status_validacao",
   ];
   const body = rows.map((row) => {
-    const { data, lowest } = priceSummary(row.id);
+    const { data, lowest } = priceSummary(row.id, productData);
     const demand = data.offers.reduce(
-      (sum, offer) =>
-        sum + (offer.packSize === null ? 0 : offer.quantity * offer.packSize),
+      (sum, offer) => sum + (offer.selected ? offer.quantity : 0),
       0,
     );
     const brands = [...new Set(data.offers.map((offer) => offer.brand))].join(
@@ -309,6 +337,39 @@ function downloadCsv(approved: number[]) {
 }
 
 export default function Home() {
+  const [realData, setRealData] = useState<MarketData | null>(null);
+  const [loadError, setLoadError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    fetch("/market-data.json.gz")
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.body) throw new Error("Resposta sem conteúdo");
+        const stream = response.body.pipeThrough(new DecompressionStream("gzip"));
+        return (await new Response(stream).json()) as MarketData;
+      })
+      .then((data) => active && setRealData(data))
+      .catch(() => active && setLoadError("Não foi possível carregar a base hospitalar."));
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (loadError) {
+    return <main className="data-state error">{loadError}</main>;
+  }
+  if (!realData) {
+    return <main className="data-state">Carregando base hospitalar…</main>;
+  }
+  return <LoadedHome realData={realData} />;
+}
+
+function LoadedHome({ realData }: { realData: MarketData }) {
+  const { rows, productData, summaryData } = useMemo(
+    () => prepareMarketData(realData),
+    [realData],
+  );
   const [view, setView] = useState<View>("dashboard");
   const [selectedId, setSelectedId] = useState(1);
   const [search, setSearch] = useState("");
@@ -326,7 +387,7 @@ export default function Home() {
   const marketInput = useRef<HTMLInputElement>(null);
 
   const selected = rows.find((row) => row.id === selectedId) ?? rows[0];
-  const summary = priceSummary(selected.id);
+  const summary = priceSummary(selected.id, productData);
   const filteredRows = useMemo(
     () =>
       rows.filter((row) => {
@@ -789,7 +850,7 @@ export default function Home() {
                     </thead>
                     <tbody>
                       {filteredRows.map((row) => {
-                        const info = priceSummary(row.id);
+                        const info = priceSummary(row.id, productData);
                         const mapped = row.status !== "Revisar";
                         const marketCmv =
                           mapped && info.data.sogamaxCost > 0
@@ -949,7 +1010,7 @@ export default function Home() {
                 </div>
                 <button
                   className="primary wide"
-                  onClick={() => downloadCsv(approved)}
+                  onClick={() => downloadCsv(approved, rows, productData)}
                 >
                   Baixar demonstração em CSV <span>↓</span>
                 </button>
@@ -1037,9 +1098,10 @@ function ProductPopup({
   onChange: (kind: PopupKind) => void;
   onClose: () => void;
 }) {
-  const offers = priceSummary(row.id).offers;
-  const converted = offers.filter((offer) => offer.quantity > 0);
-  const pending = offers.filter((offer) => offer.quantity <= 0);
+  const offers = summarizeProduct(data).offers;
+  const winningOffers = offers.filter((offer) => offer.selected);
+  const converted = winningOffers.filter((offer) => offer.quantity > 0);
+  const pending = winningOffers.filter((offer) => offer.quantity <= 0);
   // QUANTIDADE já vem na unidade básica do mercado. QTDE_EMBALAGEM descreve a
   // apresentação comercial e não deve multiplicar a demanda novamente.
   const totalDemand = converted.reduce((sum, offer) => sum + offer.quantity, 0);
@@ -1049,14 +1111,17 @@ function ProductPopup({
       return {
         brand,
         competitor: group.map((offer) => offer.competitor).join(" · "),
-        demand: group.reduce((sum, offer) => sum + offer.quantity, 0),
+        demand: group.reduce(
+          (sum, offer) => sum + (offer.selected ? offer.quantity : 0),
+          0,
+        ),
       };
     })
     .sort((a, b) => b.demand - a.demand);
   const allPrices = [
     {
       competitor: "SOGAMAX",
-      brand: "Preço praticado",
+      brand: data.sogamaxBrand || "Marca não informada",
       price: data.sogamaxPrice,
       originalPrice: data.sogamaxPrice,
       normalizedPrice: data.sogamaxPrice,
@@ -1066,6 +1131,7 @@ function ProductPopup({
       unit: "Referência interna",
       standardizedUnit: "Unidade básica",
       packSize: 1,
+      selected: true,
       clientPresentation: productPresentation(row, data),
       priceBasis: "Unidade básica" as const,
       conversionRule: `${data.sogamaxPriceSource ?? "Cadastro Sogamax"} · ID ${data.sogamaxProductId ?? "validado"} · apresentação C/${productPresentation(row, data)}`,
@@ -1124,7 +1190,6 @@ function ProductPopup({
                     <th>Marca</th>
                     <th>Apresentação do cliente</th>
                     <th>Preço original</th>
-                    <th>Regra aplicada</th>
                     <th>Preço após conversão</th>
                     <th>CMV após conversão</th>
                     <th>Preço considerado</th>
@@ -1167,15 +1232,8 @@ function ProductPopup({
                           <strong>{money(offer.originalPrice)}</strong>
                         </td>
                         <td>
-                          <small>{offer.conversionRule}</small>
-                          {offer.usedFullPrice && (
-                            <span className="status review">
-                              Regra de 30%: preço cheio aplicado
-                            </span>
-                          )}
-                        </td>
-                        <td>
                           <strong>{money(offer.normalizedPrice)}</strong>
+                          <small>{offer.conversionRule}</small>
                         </td>
                         <td>
                           <strong className="cmv-value">
@@ -1187,7 +1245,12 @@ function ProductPopup({
                         <td>
                           <strong>{money(offer.effectivePrice)}</strong>
                           {offer.usedFullPrice && (
-                            <small>preço original da embalagem</small>
+                            <>
+                              <small>preço original da embalagem</small>
+                              <span className="status review">
+                                Regra de 30%: preço cheio aplicado
+                              </span>
+                            </>
                           )}
                         </td>
                         <td>
@@ -1219,11 +1282,11 @@ function ProductPopup({
               <div>
                 <span>Demanda convertida</span>
                 <strong>
-                  {totalDemand.toLocaleString("pt-BR")} {offers[0]?.baseUnit}
+                  {totalDemand.toLocaleString("pt-BR")} {winningOffers[0]?.baseUnit ?? offers[0]?.baseUnit}
                 </strong>
               </div>
               <div>
-                <span>Registros convertidos</span>
+                <span>Ofertas vencedoras convertidas</span>
                 <strong>{converted.length}</strong>
               </div>
               <div>
@@ -1232,7 +1295,7 @@ function ProductPopup({
               </div>
               <div>
                 <span>Unidade-base</span>
-                <strong>{offers[0]?.baseUnit}</strong>
+                <strong>{winningOffers[0]?.baseUnit ?? offers[0]?.baseUnit}</strong>
               </div>
             </div>
             <div className="popup-table-wrap">
@@ -1247,7 +1310,7 @@ function ProductPopup({
                   </tr>
                 </thead>
                 <tbody>
-                  {offers.map((offer) => (
+                  {winningOffers.map((offer) => (
                     <tr key={`${offer.competitor}-${offer.quantity}`}>
                       <td>
                         <strong>{offer.competitor}</strong>
@@ -1283,6 +1346,10 @@ function ProductPopup({
                 <span>Registros sem quantidade não são somados.</span>
               </div>
             )}
+            <div className="modal-note">
+              A demanda considera exclusivamente as ofertas marcadas como
+              selecionadas no relatório MedicalVM (SELECIONADO=S).
+            </div>
           </div>
         )}
         {kind === "brands" && (

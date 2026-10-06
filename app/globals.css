@@ -27,3 +27,4 @@
 .price-with-cmv{display:flex;align-items:baseline;justify-content:space-between;gap:9px;margin-top:8px}.modal-kpis .price-with-cmv strong{margin-top:0}.price-with-cmv b{flex:0 0 auto;border-radius:999px;background:#dcecf2;color:var(--blue);padding:7px 9px;font-size:12px;font-weight:900;line-height:1;letter-spacing:-.01em;white-space:nowrap}.sogamax-kpi .price-with-cmv b{background:#fff;border:1px solid #b9dce7}
 
 @media(max-width:760px){.price-with-cmv{align-items:flex-start;flex-direction:column;gap:6px}.price-with-cmv b{font-size:11px;padding:6px 8px}}
+.data-state{min-height:100vh;display:grid;place-items:center;padding:2rem;color:#dce8e3;background:#07110f;font-weight:700}.data-state.error{color:#ffb4a8}

@@ -131,7 +131,7 @@ def incompatibilities(source, target):
         reasons.append(f"concentração incompatível: {source_conc} x {target_conc}")
 
     source_measures, target_measures = measures(source), measures(target)
-    for unit in set(source_measures).intersection(target_measures):
+    for unit in sorted(set(source_measures).intersection(target_measures)):
         source_values = set(source_measures[unit])
         target_values = set(target_measures[unit])
         if not source_values.intersection(target_values):
