@@ -821,8 +821,8 @@ export default function Home() {
                             onClick={() => openProduct(row.id)}
                           >
                             <td>
-                              <strong>{row.marketDescription}</strong>
-                              <small>{row.standardDescription}</small>
+                              <strong>{row.standardDescription}</strong>
+                              <small>{row.marketDescription}</small>
                             </td>
                             <td>
                               <strong>{money(info.lowest.price)}</strong>
