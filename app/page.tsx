@@ -1060,6 +1060,9 @@ function ProductPopup({
       price: data.sogamaxPrice,
       originalPrice: data.sogamaxPrice,
       normalizedPrice: data.sogamaxPrice,
+      effectivePrice: data.sogamaxPrice,
+      conversionCmv: null,
+      usedFullPrice: false,
       unit: "Referência interna",
       standardizedUnit: "Unidade básica",
       packSize: 1,
@@ -1122,13 +1125,15 @@ function ProductPopup({
                     <th>Apresentação do cliente</th>
                     <th>Preço original</th>
                     <th>Regra aplicada</th>
-                    <th>Preço unitário</th>
-                    <th>CMV Sogamax</th>
+                    <th>Preço após conversão</th>
+                    <th>CMV após conversão</th>
+                    <th>Preço considerado</th>
+                    <th>CMV considerado</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rankedPrices.map((offer, index) => {
-                    const cmv =
+                    const effectiveCmv =
                       offer.price > 0
                         ? (data.sogamaxCost / offer.price) * 100
                         : null;
@@ -1163,15 +1168,33 @@ function ProductPopup({
                         </td>
                         <td>
                           <small>{offer.conversionRule}</small>
+                          {offer.usedFullPrice && (
+                            <span className="status review">
+                              Regra de 30%: preço cheio aplicado
+                            </span>
+                          )}
                         </td>
                         <td>
                           <strong>{money(offer.normalizedPrice)}</strong>
                         </td>
                         <td>
                           <strong className="cmv-value">
-                            {cmv === null
+                            {offer.conversionCmv === null
                               ? "—"
-                              : `${cmv.toFixed(2).replace(".", ",")}%`}
+                              : `${offer.conversionCmv.toFixed(2).replace(".", ",")}%`}
+                          </strong>
+                        </td>
+                        <td>
+                          <strong>{money(offer.effectivePrice)}</strong>
+                          {offer.usedFullPrice && (
+                            <small>preço original da embalagem</small>
+                          )}
+                        </td>
+                        <td>
+                          <strong className="cmv-value">
+                            {effectiveCmv === null
+                              ? "—"
+                              : `${effectiveCmv.toFixed(2).replace(".", ",")}%`}
                           </strong>
                         </td>
                       </tr>
@@ -1181,10 +1204,12 @@ function ProductPopup({
               </table>
             </div>
             <div className="modal-note">
-              Ranking calculado pela unidade básica. Quando o cliente informa o
-              preço de uma caixa, pacote ou fardo, o valor é dividido pela
-              quantidade contida. Ampola, frasco, comprimido e unidade mantêm o
-              preço informado.
+              Ranking calculado pelo preço considerado. Quando o cliente informa
+              o preço de uma caixa, pacote ou fardo, o valor é dividido pela
+              quantidade contida. Se o CMV após essa conversão ficar abaixo de
+              30%, a regra comercial mantém o preço original da embalagem no
+              ranking e nos cálculos. Ampola, frasco, comprimido e unidade mantêm
+              o preço informado.
             </div>
           </div>
         )}
