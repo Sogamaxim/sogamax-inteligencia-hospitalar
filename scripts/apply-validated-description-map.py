@@ -175,9 +175,21 @@ def incompatibilities(source, target):
 
 def presentation_quantity(description, spreadsheet_value):
     text = norm(description)
-    matches = re.findall(r"\bC\s*/\s*(\d+)\b", text)
+    # Doses/atomizations describe the capacity of one inhaler or spray, not a
+    # package containing that many commercial units. Do not turn C/200 DOSES
+    # into a 200-unit presentation used by price conversion.
+    commercial_text = re.sub(
+        r"\bC\s*/\s*\d+\s*(?:DOSES?|ATOM(?:IZACOES?)?)\b",
+        " ",
+        text,
+    )
+    matches = re.findall(r"\bC\s*/\s*(\d+)\b", commercial_text)
     if matches:
         return max(1, int(matches[-1]))
+    if re.search(r"\b(?:SPRAY|SPR|AEROSSOL|AEROSOL|NASAL)\b", text) and re.search(
+        r"\b(?:DOSES?|ATOM(?:IZACOES?)?)\b", text
+    ):
+        return 1
     try:
         value = int(float(spreadsheet_value))
         return max(1, value)

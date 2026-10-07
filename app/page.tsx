@@ -103,7 +103,8 @@ function prepareMarketData(realData: MarketData) {
       ...realData.summary,
       statusCounts,
       matchedMarketLines: rows.reduce(
-        (total, row) => total + (row.status === "Revisar" ? 0 : row.repetitions),
+        (total, row) =>
+          total + (row.status === "Revisar" ? 0 : row.repetitions),
         0,
       ),
     },
@@ -161,12 +162,7 @@ const money = (value: number) =>
     ? value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
     : "—";
 
-const containerUnits = new Set([
-  "CAIXA",
-  "FARDO",
-  "PACOTE",
-  "PACK",
-]);
+const containerUnits = new Set(["CAIXA", "FARDO", "PACOTE", "PACK"]);
 
 const medicalVmUnits = medicalVmUnitMap.mappings as Record<string, string>;
 
@@ -181,7 +177,9 @@ function medicalVmUnitKey(value: string) {
 
 function standardizedMedicalVmUnit(value: string) {
   const received = String(value ?? "").trim();
-  return medicalVmUnits[medicalVmUnitKey(received)] || received || "Não informado";
+  return (
+    medicalVmUnits[medicalVmUnitKey(received)] || received || "Não informado"
+  );
 }
 
 function normalizedUnit(value: string) {
@@ -191,6 +189,10 @@ function normalizedUnit(value: string) {
     .trim()
     .toUpperCase()
     .replace(/[^A-Z]/g, "");
+}
+
+function isOwnSogamaxOffer(offer: MarketOffer) {
+  return medicalVmUnitKey(offer.competitor).startsWith("SOGAMAX");
 }
 
 function sogamaxPresentation(description: string) {
@@ -203,7 +205,8 @@ function sogamaxPresentation(description: string) {
 function productPresentation(row: DescriptionRow, data: ProductData) {
   return Math.max(
     1,
-    Number(data.sogamaxPresentation) || sogamaxPresentation(row.standardDescription),
+    Number(data.sogamaxPresentation) ||
+      sogamaxPresentation(row.standardDescription),
   );
 }
 
@@ -226,9 +229,10 @@ function normalizeOffer(
     clientPresentation === sogamaxPackSize &&
     offer.price > 0 &&
     offer.price < 1;
-  const priceBasis = reportedAsPackage && !validatedGloveUnitPrice
-    ? "Embalagem"
-    : "Unidade básica";
+  const priceBasis =
+    reportedAsPackage && !validatedGloveUnitPrice
+      ? "Embalagem"
+      : "Unidade básica";
   const normalizedPrice = validatedGloveUnitPrice
     ? offer.price * sogamaxPackSize
     : priceBasis === "Embalagem"
@@ -260,44 +264,51 @@ function normalizeOffer(
 }
 
 function summarizeProduct(data: ProductData, row: DescriptionRow) {
-  const offers = data.offers.map((offer) => {
-    const normalized = normalizeOffer(offer, data, row);
-    const sogamaxFullCost = data.sogamaxFullCost ?? data.sogamaxCost;
-    const conversionCmv =
-      sogamaxFullCost > 0 && normalized.normalizedPrice > 0
-        ? (sogamaxFullCost / normalized.normalizedPrice) * 100
-        : null;
-    const usedFullPrice =
-      normalized.priceBasis === "Embalagem" &&
-      conversionCmv !== null &&
-      conversionCmv < FULL_PRICE_CMV_THRESHOLD;
-    const effectivePrice = usedFullPrice
-      ? normalized.originalPrice
-      : normalized.normalizedPrice;
+  const ownOffersExcluded = data.offers.filter(isOwnSogamaxOffer).length;
+  const offers = data.offers
+    .filter((offer) => !isOwnSogamaxOffer(offer))
+    .map((offer) => {
+      const normalized = normalizeOffer(offer, data, row);
+      const sogamaxFullCost = data.sogamaxFullCost ?? data.sogamaxCost;
+      const conversionCmv =
+        sogamaxFullCost > 0 && normalized.normalizedPrice > 0
+          ? (sogamaxFullCost / normalized.normalizedPrice) * 100
+          : null;
+      const usedFullPrice =
+        normalized.priceBasis === "Embalagem" &&
+        conversionCmv !== null &&
+        conversionCmv < FULL_PRICE_CMV_THRESHOLD;
+      const effectivePrice = usedFullPrice
+        ? normalized.originalPrice
+        : normalized.normalizedPrice;
 
-    return {
-      ...normalized,
-      price: effectivePrice,
-      effectivePrice,
-      conversionCmv,
-      usedFullPrice,
-      conversionRule: usedFullPrice
-        ? `${normalized.conversionRule} · CMV após conversão ${conversionCmv.toFixed(2).replace(".", ",")}% < ${FULL_PRICE_CMV_THRESHOLD}% → considerado preço cheio`
-        : normalized.conversionRule,
-    };
-  });
+      return {
+        ...normalized,
+        price: effectivePrice,
+        effectivePrice,
+        conversionCmv,
+        usedFullPrice,
+        conversionRule: usedFullPrice
+          ? `${normalized.conversionRule} · CMV após conversão ${conversionCmv.toFixed(2).replace(".", ",")}% < ${FULL_PRICE_CMV_THRESHOLD}% → considerado preço cheio`
+          : normalized.conversionRule,
+      };
+    });
   const ordered = [...offers].sort((a, b) => a.price - b.price);
   return {
     data,
     offers,
+    ownOffersExcluded,
     lowest: ordered[0],
-    average:
-      ordered.reduce((sum, offer) => sum + offer.price, 0) /
-      ordered.length,
+    average: ordered.length
+      ? ordered.reduce((sum, offer) => sum + offer.price, 0) / ordered.length
+      : null,
   };
 }
 
-function priceSummary(row: DescriptionRow, productData: Record<number, ProductData>) {
+function priceSummary(
+  row: DescriptionRow,
+  productData: Record<number, ProductData>,
+) {
   return summarizeProduct(productData[row.id], row);
 }
 
@@ -320,25 +331,21 @@ function downloadCsv(
     "status_validacao",
   ];
   const body = rows.map((row) => {
-    const { data, lowest } = priceSummary(row, productData);
-    const demand = data.offers.reduce(
+    const { data, offers, lowest } = priceSummary(row, productData);
+    const demand = offers.reduce(
       (sum, offer) => sum + (offer.selected ? offer.quantity : 0),
       0,
     );
-    const brands = [...new Set(data.offers.map((offer) => offer.brand))].join(
-      " | ",
-    );
+    const brands = [...new Set(offers.map((offer) => offer.brand))].join(" | ");
     return [
       row.marketDescription,
       row.standardDescription,
       row.repetitions,
       `${row.confidence.toFixed(1).replace(".", ",")}%`,
-      lowest.price.toFixed(2).replace(".", ","),
-      lowest.competitor,
-      lowest.brand,
-      (data.sogamaxFullPrice ?? data.sogamaxPrice)
-        .toFixed(2)
-        .replace(".", ","),
+      lowest ? lowest.price.toFixed(2).replace(".", ",") : "",
+      lowest?.competitor ?? "",
+      lowest?.brand ?? "",
+      (data.sogamaxFullPrice ?? data.sogamaxPrice).toFixed(2).replace(".", ","),
       demand,
       brands,
       approved.includes(row.id) ? "APROVADO" : "PENDENTE",
@@ -369,11 +376,17 @@ export default function Home() {
       .then(async (response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         if (!response.body) throw new Error("Resposta sem conteúdo");
-        const stream = response.body.pipeThrough(new DecompressionStream("gzip"));
+        const stream = response.body.pipeThrough(
+          new DecompressionStream("gzip"),
+        );
         return (await new Response(stream).json()) as MarketData;
       })
       .then((data) => active && setRealData(data))
-      .catch(() => active && setLoadError("Não foi possível carregar a base hospitalar."));
+      .catch(
+        () =>
+          active &&
+          setLoadError("Não foi possível carregar a base hospitalar."),
+      );
     return () => {
       active = false;
     };
@@ -880,7 +893,7 @@ function LoadedHome({ realData }: { realData: MarketData }) {
                         const sogamaxOfficialCost =
                           info.data.sogamaxFullCost ?? info.data.sogamaxCost;
                         const marketCmv =
-                          mapped && sogamaxOfficialCost > 0
+                          mapped && info.lowest && sogamaxOfficialCost > 0
                             ? (sogamaxOfficialCost / info.lowest.price) * 100
                             : null;
                         const sogamaxCmv =
@@ -897,7 +910,8 @@ function LoadedHome({ realData }: { realData: MarketData }) {
                           purchaseSuggestion.trim() !== "" &&
                           purchaseSuggestionValue > 0 &&
                           Number.isFinite(purchaseSuggestionValue)
-                            ? (sogamaxOfficialCost / purchaseSuggestionValue) * 100
+                            ? (sogamaxOfficialCost / purchaseSuggestionValue) *
+                              100
                             : null;
                         return (
                           <tr
@@ -910,8 +924,14 @@ function LoadedHome({ realData }: { realData: MarketData }) {
                               <small>{row.marketDescription}</small>
                             </td>
                             <td>
-                              <strong>{money(info.lowest.price)}</strong>
-                              <small>na apresentação Sogamax</small>
+                              <strong>
+                                {info.lowest ? money(info.lowest.price) : "—"}
+                              </strong>
+                              <small>
+                                {info.lowest
+                                  ? "na apresentação Sogamax"
+                                  : "sem oferta externa comparável"}
+                              </small>
                             </td>
                             <td>
                               <strong className="table-cmv">
@@ -921,8 +941,11 @@ function LoadedHome({ realData }: { realData: MarketData }) {
                               </strong>
                             </td>
                             <td>
-                              <strong>{info.lowest.competitor}</strong>
-                              <small>{info.lowest.brand}</small>
+                              <strong>{info.lowest?.competitor ?? "—"}</strong>
+                              <small>
+                                {info.lowest?.brand ??
+                                  "Sogamax excluída do mercado"}
+                              </small>
                             </td>
                             <td>
                               <strong>
@@ -951,7 +974,9 @@ function LoadedHome({ realData }: { realData: MarketData }) {
                                     )
                                   : "—"}
                               </strong>
-                              {mapped && <small>valor exato da coluna CUSTO</small>}
+                              {mapped && (
+                                <small>valor exato da coluna CUSTO</small>
+                              )}
                             </td>
                             <td>
                               <strong className="table-cmv">
@@ -1129,7 +1154,8 @@ function ProductPopup({
   onChange: (kind: PopupKind) => void;
   onClose: () => void;
 }) {
-  const offers = summarizeProduct(data, row).offers;
+  const summary = summarizeProduct(data, row);
+  const offers = summary.offers;
   const winningOffers = offers.filter((offer) => offer.selected);
   const converted = winningOffers.filter((offer) => offer.quantity > 0);
   const pending = winningOffers.filter((offer) => offer.quantity <= 0);
@@ -1149,8 +1175,7 @@ function ProductPopup({
       };
     })
     .sort((a, b) => b.demand - a.demand);
-  const sogamaxReferencePrice =
-    data.sogamaxFullPrice ?? data.sogamaxPrice;
+  const sogamaxReferencePrice = data.sogamaxFullPrice ?? data.sogamaxPrice;
   const allPrices = [
     {
       competitor: "SOGAMAX",
@@ -1230,12 +1255,9 @@ function ProductPopup({
                 </thead>
                 <tbody>
                   {rankedPrices.map((offer, index) => {
-                    const cmvCost =
-                      data.sogamaxFullCost ?? data.sogamaxCost;
+                    const cmvCost = data.sogamaxFullCost ?? data.sogamaxCost;
                     const effectiveCmv =
-                      offer.price > 0
-                        ? (cmvCost / offer.price) * 100
-                        : null;
+                      offer.price > 0 ? (cmvCost / offer.price) * 100 : null;
                     return (
                       <tr
                         key={`${offer.competitor}-${offer.originalPrice}-${index}`}
@@ -1271,7 +1293,11 @@ function ProductPopup({
                             {offer.usedFullPrice && (
                               <>
                                 <span className="status review">
-                                  CMV convertido {offer.conversionCmv?.toFixed(2).replace(".", ",")}% &lt; 30%
+                                  CMV convertido{" "}
+                                  {offer.conversionCmv
+                                    ?.toFixed(2)
+                                    .replace(".", ",")}
+                                  % &lt; 30%
                                 </span>
                                 <small>Preço cheio aplicado no ranking</small>
                               </>
@@ -1302,8 +1328,16 @@ function ProductPopup({
               o preço de uma caixa, pacote ou fardo, o valor é dividido pela
               quantidade contida. Se o CMV após essa conversão ficar abaixo de
               30%, a regra comercial mantém o preço original da embalagem no
-              ranking e nos cálculos. Ampola, frasco, comprimido e unidade mantêm
-              o preço informado.
+              ranking e nos cálculos. Ampola, frasco, comprimido e unidade
+              mantêm o preço informado.
+              {summary.ownOffersExcluded > 0 && (
+                <>
+                  <br />
+                  {summary.ownOffersExcluded} oferta(s) da própria Sogamax
+                  recebida(s) na MedicalVM foram excluídas do comparativo de
+                  mercado.
+                </>
+              )}
             </div>
           </div>
         )}
@@ -1313,7 +1347,8 @@ function ProductPopup({
               <div>
                 <span>Demanda convertida</span>
                 <strong>
-                  {totalDemand.toLocaleString("pt-BR")} {winningOffers[0]?.baseUnit ?? offers[0]?.baseUnit}
+                  {totalDemand.toLocaleString("pt-BR")}{" "}
+                  {winningOffers[0]?.baseUnit ?? offers[0]?.baseUnit}
                 </strong>
               </div>
               <div>
@@ -1326,7 +1361,9 @@ function ProductPopup({
               </div>
               <div>
                 <span>Unidade-base</span>
-                <strong>{winningOffers[0]?.baseUnit ?? offers[0]?.baseUnit}</strong>
+                <strong>
+                  {winningOffers[0]?.baseUnit ?? offers[0]?.baseUnit}
+                </strong>
               </div>
             </div>
             <div className="popup-table-wrap">
@@ -1347,7 +1384,8 @@ function ProductPopup({
                         <strong>{offer.competitor}</strong>
                       </td>
                       <td>
-                        {offer.quantity.toLocaleString("pt-BR")} {offer.standardizedUnit}
+                        {offer.quantity.toLocaleString("pt-BR")}{" "}
+                        {offer.standardizedUnit}
                       </td>
                       <td>Quantidade já informada em {offer.baseUnit}</td>
                       <td>

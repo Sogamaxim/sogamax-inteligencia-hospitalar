@@ -35,10 +35,7 @@ test("renders development preview metadata", async () => {
   );
 
   assert.equal(response.status, 200);
-  assert.match(
-    response.headers.get("content-type") ?? "",
-    /^text\/html\b/i,
-  );
+  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   assert.match(await response.text(), developmentPreviewMeta);
 });
 
@@ -74,7 +71,7 @@ test("applies the full-price rule to the mandatory tongue-depressor case", async
   assert.ok(Math.abs(convertedPrice - 54.7) < 1e-9);
   assert.ok(convertedCmv > 8.66 && convertedCmv < 8.68);
   assert.equal(effectivePrice, 5.47);
-  assert.ok(effectiveCmv > 86.69 && effectiveCmv < 86.70);
+  assert.ok(effectiveCmv > 86.69 && effectiveCmv < 86.7);
   assert.notEqual(effectivePrice, 547);
 });
 
@@ -106,7 +103,8 @@ test("builds September data from official sources and blocks unsafe matches", as
   assert.equal(marketData.summary.sogamaxReferences, 5053);
 
   const clonidine = marketData.rows.find(
-    (item) => item.marketDescription.trim().toUpperCase() === "CLONIDINA 0,100MG VO",
+    (item) =>
+      item.marketDescription.trim().toUpperCase() === "CLONIDINA 0,100MG VO",
   );
   assert.equal(clonidine.status, "Revisar");
   assert.match(clonidine.evidence.join(" "), /incompatível/i);
@@ -142,7 +140,10 @@ test("builds September data from official sources and blocks unsafe matches", as
 });
 
 test("uses only selected MedicalVM offers for demand and shows the official brand", async () => {
-  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const source = await readFile(
+    new URL("../app/page.tsx", import.meta.url),
+    "utf8",
+  );
   assert.match(source, /offer\.selected \? offer\.quantity : 0/);
   assert.match(source, /offers\.filter\(\(offer\) => offer\.selected\)/);
   assert.match(source, /data\.sogamaxBrand \|\| "Marca não informada"/);
@@ -173,4 +174,22 @@ test("uses only selected MedicalVM offers for demand and shows the official bran
   assert.doesNotMatch(source, /<th>CMV considerado<\/th>/);
   assert.match(source, /Preço cheio aplicado no ranking/);
   assert.match(source, /SELECIONADO=S/);
+  assert.match(source, /filter\(\(offer\) => !isOwnSogamaxOffer\(offer\)\)/);
+  assert.match(source, /oferta\(s\) da própria Sogamax/);
+});
+
+test("does not treat inhaler doses as commercial package quantity", async () => {
+  const root = new URL("../", import.meta.url);
+  const marketData = await readMarketData(root);
+  const rows = marketData.rows.filter(
+    (item) => item.standardDescription === "AEROLIN SPRAY 100MCG C/200 DOSES",
+  );
+
+  assert.ok(rows.length > 0);
+  for (const row of rows) {
+    const data = marketData.productData[String(row.id)];
+    assert.equal(data.sogamaxPresentation, 1);
+    assert.equal(data.sogamaxPrice, data.sogamaxFullPrice);
+    assert.equal(data.sogamaxCost, data.sogamaxFullCost);
+  }
 });
