@@ -315,7 +315,9 @@ function downloadCsv(
       lowest.price.toFixed(2).replace(".", ","),
       lowest.competitor,
       lowest.brand,
-      data.sogamaxPrice.toFixed(2).replace(".", ","),
+      (data.sogamaxFullPrice ?? data.sogamaxPrice)
+        .toFixed(2)
+        .replace(".", ","),
       demand,
       brands,
       approved.includes(row.id) ? "APROVADO" : "PENDENTE",
@@ -856,10 +858,13 @@ function LoadedHome({ realData }: { realData: MarketData }) {
                           mapped && info.data.sogamaxCost > 0
                             ? (info.data.sogamaxCost / info.lowest.price) * 100
                             : null;
+                        const sogamaxOfficialPrice =
+                          info.data.sogamaxFullPrice ?? info.data.sogamaxPrice;
+                        const sogamaxOfficialCost =
+                          info.data.sogamaxFullCost ?? info.data.sogamaxCost;
                         const sogamaxCmv =
-                          mapped && info.data.sogamaxPrice > 0
-                            ? (info.data.sogamaxCost / info.data.sogamaxPrice) *
-                              100
+                          mapped && sogamaxOfficialPrice > 0
+                            ? (sogamaxOfficialCost / sogamaxOfficialPrice) * 100
                             : null;
                         const purchaseSuggestion =
                           purchaseSuggestions[row.id] ?? "";
@@ -902,11 +907,11 @@ function LoadedHome({ realData }: { realData: MarketData }) {
                             </td>
                             <td>
                               <strong>
-                                {mapped ? money(info.data.sogamaxPrice) : "—"}
+                                {mapped ? money(sogamaxOfficialPrice) : "—"}
                               </strong>
                               <small>
                                 {mapped
-                                  ? `unidade básica · cadastro ID ${info.data.sogamaxProductId ?? "validado"}`
+                                  ? `valor exato da coluna VALOR · cadastro ID ${info.data.sogamaxProductId ?? "validado"}`
                                   : "aguardando validação"}
                               </small>
                             </td>

@@ -128,6 +128,16 @@ test("uses only selected MedicalVM offers for demand and shows the official bran
   assert.match(source, /data\.sogamaxFullPrice \?\? data\.sogamaxPrice/);
   assert.match(
     source,
+    /const sogamaxOfficialPrice =[\s\S]*info\.data\.sogamaxFullPrice \?\? info\.data\.sogamaxPrice/,
+  );
+  assert.match(
+    source,
+    /const sogamaxOfficialCost =[\s\S]*info\.data\.sogamaxFullCost \?\? info\.data\.sogamaxCost/,
+  );
+  assert.match(source, /sogamaxOfficialCost \/ sogamaxOfficialPrice/);
+  assert.match(source, /valor exato da coluna VALOR/);
+  assert.match(
+    source,
     /info\.data\.sogamaxFullCost \?\?[\s\S]*info\.data\.sogamaxCost/,
   );
   assert.match(source, /não disponível na tabela oficial/);
