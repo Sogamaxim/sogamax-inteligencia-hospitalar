@@ -119,6 +119,68 @@ test("treats compress and gauze prices as basic-unit prices", async () => {
   assert.notEqual(consideredPrice, (offer.price / offer.packSize) * 500);
 });
 
+test("uses the CMV coherence band for Campo Operatorio C/5", async () => {
+  const root = new URL("../", import.meta.url);
+  const marketData = await readMarketData(root);
+  const standardDescription =
+    "CAMPO OPERATORIO 25CM X 28CM PCT C/5 15G C/RX EST";
+
+  const packageRow = marketData.rows.find(
+    (item) =>
+      item.standardDescription === standardDescription &&
+      item.marketDescription === "CAMPO OPERATORIO 25 X 28 CM",
+  );
+  const packageData = marketData.productData[String(packageRow.id)];
+  const rioclarense = packageData.offers.find(
+    (item) =>
+      item.competitor === "RIOCLARENSE LONDRINA - PR" &&
+      item.price === 5.6665,
+  );
+  const incorrectLogisticConversion =
+    (rioclarense.price / rioclarense.packSize) *
+    packageData.sogamaxPresentation;
+  const initialCmv =
+    (packageData.sogamaxFullCost / rioclarense.price) * 100;
+
+  assert.ok(incorrectLogisticConversion < 0.17);
+  assert.ok(initialCmv > 79.83 && initialCmv < 79.85);
+  assert.ok(initialCmv >= 30 && initialCmv <= 250);
+  assert.equal(rioclarense.price, 5.6665);
+
+  const unitRow = marketData.rows.find(
+    (item) =>
+      item.standardDescription === standardDescription &&
+      item.marketDescription ===
+        "COMPRESSA CAMPO OPERATORIO ESTERIL 25x28 C/ 5UN",
+  );
+  const unitData = marketData.productData[String(unitRow.id)];
+  const brazmix = unitData.offers.find(
+    (item) => item.competitor === "BRAZMIX" && item.price === 4.75,
+  );
+  const convertedPrice = brazmix.price * unitData.sogamaxPresentation;
+  const convertedCmv = (unitData.sogamaxFullCost / convertedPrice) * 100;
+  const effectivePrice = convertedCmv < 30 ? brazmix.price : convertedPrice;
+  const effectiveCmv = (unitData.sogamaxFullCost / effectivePrice) * 100;
+
+  assert.equal(convertedPrice, 23.75);
+  assert.ok(convertedCmv > 19.04 && convertedCmv < 19.06);
+  assert.equal(effectivePrice, 4.75);
+  assert.ok(effectiveCmv > 95.24 && effectiveCmv < 95.25);
+});
+
+test("keeps the CMV limits auditable and applies the low-CMV fallback globally", async () => {
+  const root = new URL("../", import.meta.url);
+  const source = await readFile(new URL("app/page.tsx", root), "utf8");
+
+  assert.match(source, /MAX_COHERENT_CMV_THRESHOLD = 250/);
+  assert.match(source, /const usedFullPrice =\s*conversionApplied &&/);
+  assert.doesNotMatch(
+    source,
+    /const usedFullPrice =\s*normalized\.priceBasis === "Embalagem"/,
+  );
+  assert.match(source, /QTDE_EMBALAGEM logística ignorada/);
+});
+
 test("builds September data from official sources and blocks unsafe matches", async () => {
   const root = new URL("../", import.meta.url);
   const marketData = await readMarketData(root);
