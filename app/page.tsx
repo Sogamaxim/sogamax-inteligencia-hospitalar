@@ -229,17 +229,23 @@ function normalizeOffer(
     clientPresentation === sogamaxPackSize &&
     offer.price > 0 &&
     offer.price < 1;
+  const validatedGauzeUnitPrice =
+    /^(COMPRESSA|GAZE)\b/.test(
+      medicalVmUnitKey(row.standardDescription),
+    ) && reportedAsPackage;
   const priceBasis =
-    reportedAsPackage && !validatedGloveUnitPrice
+    reportedAsPackage && !validatedGloveUnitPrice && !validatedGauzeUnitPrice
       ? "Embalagem"
       : "Unidade básica";
-  const normalizedPrice = validatedGloveUnitPrice
+  const normalizedPrice = validatedGloveUnitPrice || validatedGauzeUnitPrice
     ? offer.price * sogamaxPackSize
     : priceBasis === "Embalagem"
       ? (offer.price / clientPresentation) * sogamaxPackSize
       : offer.price * sogamaxPackSize;
   const conversionRule = validatedGloveUnitPrice
     ? `Validação comercial da luva: ${money(offer.price)} × ${sogamaxPackSize}`
+    : validatedGauzeUnitPrice
+      ? `Validação comercial de compressas/gazes: ${money(offer.price)} × ${sogamaxPackSize}`
     : priceBasis === "Embalagem"
       ? clientPresentation === sogamaxPackSize
         ? `${standardizedUnit} C/${clientPresentation}: preço já corresponde à apresentação Sogamax`

@@ -94,6 +94,31 @@ test("applies the commercially validated multiplication to sub-real glove prices
   assert.equal(cmv, 52);
 });
 
+test("treats compress and gauze prices as basic-unit prices", async () => {
+  const root = new URL("../", import.meta.url);
+  const marketData = await readMarketData(root);
+  const row = marketData.rows.find(
+    (item) =>
+      item.standardDescription ===
+        "COMPRESSA DE GAZE 13F. 7,5 x 7,5 500 X 10 ESTERIL" &&
+      item.marketDescription === "Gaze Estéril 7,5 X 7,5 - 13 fios",
+  );
+  const data = marketData.productData[String(row.id)];
+  const offer = data.offers.find(
+    (item) =>
+      item.competitor === "SUPERMED ARUJA SP" &&
+      item.price === 0.42 &&
+      item.packSize === 1200,
+  );
+  const consideredPrice = offer.price * data.sogamaxPresentation;
+  const cmv = (data.sogamaxFullCost / consideredPrice) * 100;
+
+  assert.equal(data.sogamaxPresentation, 500);
+  assert.equal(consideredPrice, 210);
+  assert.ok(cmv > 98.94 && cmv < 98.95);
+  assert.notEqual(consideredPrice, (offer.price / offer.packSize) * 500);
+});
+
 test("builds September data from official sources and blocks unsafe matches", async () => {
   const root = new URL("../", import.meta.url);
   const marketData = await readMarketData(root);
@@ -159,6 +184,7 @@ test("uses only selected MedicalVM offers for demand and shows the official bran
   assert.match(source, /sogamaxOfficialCost \/ sogamaxOfficialPrice/);
   assert.match(source, /valor exato da coluna VALOR/);
   assert.match(source, /Validação comercial da luva/);
+  assert.match(source, /Validação comercial de compressas\/gazes/);
   assert.match(source, /Menor preço comparável/);
   assert.match(source, /na apresentação Sogamax/);
   assert.match(
