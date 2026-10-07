@@ -61,19 +61,40 @@ test("applies the full-price rule to the mandatory tongue-depressor case", async
   const isPackage = ["CAIXA", "FARDO", "PACOTE", "PACK"].includes(
     standardizedUnit.toUpperCase(),
   );
-  const convertedPrice = isPackage ? offer.price / offer.packSize : offer.price;
-  const convertedCmv = (data.sogamaxCost / convertedPrice) * 100;
+  const convertedPrice = isPackage
+    ? (offer.price / offer.packSize) * data.sogamaxPresentation
+    : offer.price * data.sogamaxPresentation;
+  const convertedCmv = (data.sogamaxFullCost / convertedPrice) * 100;
   const effectivePrice = convertedCmv < 30 ? offer.price : convertedPrice;
-  const effectiveCmv = (data.sogamaxCost / effectivePrice) * 100;
+  const effectiveCmv = (data.sogamaxFullCost / effectivePrice) * 100;
 
   assert.equal(standardizedUnit, "Pacote");
   assert.equal(offer.packSize, 10);
   assert.equal(offer.selected, false);
-  assert.ok(Math.abs(convertedPrice - 0.547) < Number.EPSILON);
+  assert.ok(Math.abs(convertedPrice - 54.7) < 1e-9);
   assert.ok(convertedCmv > 8.66 && convertedCmv < 8.68);
   assert.equal(effectivePrice, 5.47);
-  assert.ok(effectiveCmv > 0.86 && effectiveCmv < 0.88);
+  assert.ok(effectiveCmv > 86.69 && effectiveCmv < 86.70);
   assert.notEqual(effectivePrice, 547);
+});
+
+test("applies the commercially validated multiplication to sub-real glove prices", async () => {
+  const root = new URL("../", import.meta.url);
+  const marketData = await readMarketData(root);
+  const row = marketData.rows.find(
+    (item) =>
+      item.standardDescription === "LUVA DE PROCEDIMENTO TAM PP C/ PO C/100" &&
+      item.marketDescription.includes("pp com po"),
+  );
+  const data = marketData.productData[String(row.id)];
+  const offer = data.offers.find(
+    (item) => item.competitor === "MEDFUTURA - RJ" && item.price === 0.3,
+  );
+  const consideredPrice = offer.price * data.sogamaxPresentation;
+  const cmv = (data.sogamaxFullCost / consideredPrice) * 100;
+
+  assert.equal(consideredPrice, 30);
+  assert.equal(cmv, 52);
 });
 
 test("builds September data from official sources and blocks unsafe matches", async () => {
@@ -136,6 +157,9 @@ test("uses only selected MedicalVM offers for demand and shows the official bran
   );
   assert.match(source, /sogamaxOfficialCost \/ sogamaxOfficialPrice/);
   assert.match(source, /valor exato da coluna VALOR/);
+  assert.match(source, /Validação comercial da luva/);
+  assert.match(source, /Menor preço comparável/);
+  assert.match(source, /na apresentação Sogamax/);
   assert.match(
     source,
     /info\.data\.sogamaxFullCost \?\?[\s\S]*info\.data\.sogamaxCost/,
