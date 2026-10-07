@@ -274,7 +274,9 @@ def main():
             product = {
                 "sogamaxPrice": round(unit_price, 6),
                 "sogamaxCost": round(unit_cost, 6),
-                "lastPurchaseCost": round(unit_cost, 6),
+                # The official price table has no last-purchase-cost column.
+                # Never fabricate it by copying the average cost.
+                "lastPurchaseCost": None,
                 "sogamaxProductId": int(selected["Id"]),
                 "sogamaxPresentation": presentation,
                 "sogamaxBrand": clean_text(selected["MARCA"]),
@@ -292,7 +294,7 @@ def main():
             product = {
                 "sogamaxPrice": 0,
                 "sogamaxCost": 0,
-                "lastPurchaseCost": 0,
+                "lastPurchaseCost": None,
             }
             if resolution in {"incompatible", "mapping_ambiguous", "ambiguous"}:
                 quarantine[str(row_id)] = evidence

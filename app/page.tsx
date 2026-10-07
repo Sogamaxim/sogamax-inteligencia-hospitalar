@@ -34,7 +34,7 @@ type MarketOffer = {
 type ProductData = {
   sogamaxPrice: number;
   sogamaxCost: number;
-  lastPurchaseCost: number;
+  lastPurchaseCost?: number | null;
   sogamaxProductId?: number;
   sogamaxPresentation?: number;
   sogamaxBrand?: string;
@@ -911,16 +911,23 @@ function LoadedHome({ realData }: { realData: MarketData }) {
                               </small>
                             </td>
                             <td>
-                              <strong>
+                              <strong>—</strong>
+                              <small>
                                 {mapped
-                                  ? money(info.data.lastPurchaseCost)
-                                  : "—"}
-                              </strong>
+                                  ? "não disponível na tabela oficial"
+                                  : "aguardando validação"}
+                              </small>
                             </td>
                             <td>
                               <strong>
-                                {mapped ? money(info.data.sogamaxCost) : "—"}
+                                {mapped
+                                  ? money(
+                                      info.data.sogamaxFullCost ??
+                                        info.data.sogamaxCost,
+                                    )
+                                  : "—"}
                               </strong>
+                              {mapped && <small>valor exato da coluna CUSTO</small>}
                             </td>
                             <td>
                               <strong className="table-cmv">

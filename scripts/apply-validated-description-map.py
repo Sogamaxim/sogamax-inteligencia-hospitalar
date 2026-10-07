@@ -283,7 +283,9 @@ def main():
         product = site["productData"][str(row["id"])]
         product["sogamaxPrice"] = round(float(selected["unit_price"]), 6)
         product["sogamaxCost"] = round(float(selected["unit_cost"]), 6)
-        product["lastPurchaseCost"] = round(float(selected["unit_cost"]), 6)
+        # The supplied official table does not contain a last-entry value.
+        # Keep it unavailable instead of duplicating the average cost.
+        product["lastPurchaseCost"] = None
         product["sogamaxProductId"] = int(selected["Id"])
         product["sogamaxPresentation"] = int(selected["presentation_qty"])
         product["sogamaxPriceSource"] = "Tabela de preços Sogamax"
