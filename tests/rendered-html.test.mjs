@@ -125,6 +125,11 @@ test("uses only selected MedicalVM offers for demand and shows the official bran
   assert.match(source, /offer\.selected \? offer\.quantity : 0/);
   assert.match(source, /offers\.filter\(\(offer\) => offer\.selected\)/);
   assert.match(source, /data\.sogamaxBrand \|\| "Marca não informada"/);
-  assert.equal(source.match(/<th>Regra aplicada<\/th>/g)?.length, 1);
+  assert.match(source, /data\.sogamaxFullPrice \?\? data\.sogamaxPrice/);
+  assert.equal(source.match(/<th>Regra aplicada<\/th>/g)?.length, 2);
+  assert.doesNotMatch(source, /<th>Preço após conversão<\/th>/);
+  assert.doesNotMatch(source, /<th>CMV após conversão<\/th>/);
+  assert.doesNotMatch(source, /<th>CMV considerado<\/th>/);
+  assert.match(source, /Preço cheio aplicado no ranking/);
   assert.match(source, /SELECIONADO=S/);
 });

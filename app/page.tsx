@@ -1118,14 +1118,16 @@ function ProductPopup({
       };
     })
     .sort((a, b) => b.demand - a.demand);
+  const sogamaxReferencePrice =
+    data.sogamaxFullPrice ?? data.sogamaxPrice;
   const allPrices = [
     {
       competitor: "SOGAMAX",
       brand: data.sogamaxBrand || "Marca não informada",
-      price: data.sogamaxPrice,
-      originalPrice: data.sogamaxPrice,
-      normalizedPrice: data.sogamaxPrice,
-      effectivePrice: data.sogamaxPrice,
+      price: sogamaxReferencePrice,
+      originalPrice: sogamaxReferencePrice,
+      normalizedPrice: sogamaxReferencePrice,
+      effectivePrice: sogamaxReferencePrice,
       conversionCmv: null,
       usedFullPrice: false,
       unit: "Referência interna",
@@ -1182,7 +1184,7 @@ function ProductPopup({
         {kind === "prices" && (
           <div className="modal-content">
             <div className="popup-table-wrap">
-              <table className="popup-table">
+              <table className="popup-table price-audit-table">
                 <thead>
                   <tr>
                     <th>Posição</th>
@@ -1190,21 +1192,24 @@ function ProductPopup({
                     <th>Marca</th>
                     <th>Apresentação do cliente</th>
                     <th>Preço original</th>
-                    <th>Preço após conversão</th>
-                    <th>CMV após conversão</th>
+                    <th>Regra aplicada</th>
                     <th>Preço considerado</th>
-                    <th>CMV considerado</th>
+                    <th>CMV Sogamax</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rankedPrices.map((offer, index) => {
+                    const cmvCost =
+                      offer.competitor === "SOGAMAX"
+                        ? data.sogamaxFullCost ?? data.sogamaxCost
+                        : data.sogamaxCost;
                     const effectiveCmv =
                       offer.price > 0
-                        ? (data.sogamaxCost / offer.price) * 100
+                        ? (cmvCost / offer.price) * 100
                         : null;
                     return (
                       <tr
-                        key={`${offer.competitor}-${offer.price}`}
+                        key={`${offer.competitor}-${offer.originalPrice}-${index}`}
                         className={
                           offer.competitor === "SOGAMAX" ? "sogamax-row" : ""
                         }
@@ -1232,25 +1237,22 @@ function ProductPopup({
                           <strong>{money(offer.originalPrice)}</strong>
                         </td>
                         <td>
-                          <strong>{money(offer.normalizedPrice)}</strong>
-                          <small>{offer.conversionRule}</small>
-                        </td>
-                        <td>
-                          <strong className="cmv-value">
-                            {offer.conversionCmv === null
-                              ? "—"
-                              : `${offer.conversionCmv.toFixed(2).replace(".", ",")}%`}
-                          </strong>
+                          <div className="rule-summary">
+                            <small>{offer.conversionRule}</small>
+                            {offer.usedFullPrice && (
+                              <>
+                                <span className="status review">
+                                  CMV convertido {offer.conversionCmv?.toFixed(2).replace(".", ",")}% &lt; 30%
+                                </span>
+                                <small>Preço cheio aplicado no ranking</small>
+                              </>
+                            )}
+                          </div>
                         </td>
                         <td>
                           <strong>{money(offer.effectivePrice)}</strong>
                           {offer.usedFullPrice && (
-                            <>
-                              <small>preço original da embalagem</small>
-                              <span className="status review">
-                                Regra de 30%: preço cheio aplicado
-                              </span>
-                            </>
+                            <small>preço original da embalagem</small>
                           )}
                         </td>
                         <td>
