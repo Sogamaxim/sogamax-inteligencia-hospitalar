@@ -168,17 +168,48 @@ test("uses the CMV coherence band for Campo Operatorio C/5", async () => {
   assert.ok(effectiveCmv > 95.24 && effectiveCmv < 95.25);
 });
 
-test("keeps the CMV limits auditable and applies the low-CMV fallback globally", async () => {
+test("keeps the multiplied price selected from an initial CMV above 250%", async () => {
+  const root = new URL("../", import.meta.url);
+  const marketData = await readMarketData(root);
+  const row = marketData.rows.find(
+    (item) =>
+      item.standardDescription ===
+        "CAMPO OPERATORIO 45CM X 50CM PCT C/50 15G S/RX N/EST" &&
+      item.marketDescription ===
+        "Compressa campo operatorio 45cm x 50cm (sem fio radiopaco)",
+  );
+  const data = marketData.productData[String(row.id)];
+  const offer = data.offers.find(
+    (item) =>
+      item.competitor === "SUPERMED CAMBUI ITAIM MG" &&
+      item.price === 2.8512,
+  );
+  const initialCmv = (data.sogamaxFullCost / offer.price) * 100;
+  const consideredPrice = offer.price * data.sogamaxPresentation;
+  const consideredCmv =
+    (data.sogamaxFullCost / consideredPrice) * 100;
+
+  assert.ok(initialCmv > 1476 && initialCmv < 1477);
+  assert.equal(data.sogamaxPresentation, 50);
+  assert.equal(consideredPrice, 142.56);
+  assert.ok(consideredCmv > 29.52 && consideredCmv < 29.53);
+});
+
+test("keeps the CMV limits auditable without reprocessing the high-CMV branch", async () => {
   const root = new URL("../", import.meta.url);
   const source = await readFile(new URL("app/page.tsx", root), "utf8");
 
   assert.match(source, /MAX_COHERENT_CMV_THRESHOLD = 250/);
-  assert.match(source, /const usedFullPrice =\s*conversionApplied &&/);
+  assert.match(
+    source,
+    /const usedFullPrice =\s*conversionApplied &&\s*!resolvedByHighInitialCmv &&/,
+  );
   assert.doesNotMatch(
     source,
     /const usedFullPrice =\s*normalized\.priceBasis === "Embalagem"/,
   );
   assert.match(source, /QTDE_EMBALAGEM logística ignorada/);
+  assert.match(source, /resultado mantido sem nova decisão/);
 });
 
 test("builds September data from official sources and blocks unsafe matches", async () => {

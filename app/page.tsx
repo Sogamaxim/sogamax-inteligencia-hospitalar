@@ -289,13 +289,28 @@ function summarizeProduct(data: ProductData, row: DescriptionRow) {
         sogamaxFullCost > 0 && normalized.normalizedPrice > 0
           ? (sogamaxFullCost / normalized.normalizedPrice) * 100
           : null;
+      let resolvedByHighInitialCmv = false;
 
       // A QTDE_EMBALAGEM da MedicalVM pode representar uma caixa logística,
-      // não a apresentação comercial. Quando a conversão cria CMV acima de
-      // 250%, a regra usada na planilha escolhe entre o preço original e o
-      // preço por unidade × apresentação Sogamax, sempre exigindo que o
-      // resultado volte à faixa comercial de 30% a 250%.
+      // não a apresentação comercial. A fórmula da planilha toma uma única
+      // decisão a partir do CMV inicial: acima de 250%, multiplica o preço pela
+      // apresentação Sogamax e preserva esse resultado, sem reaplicar depois a
+      // trava de 30% sobre o CMV recalculado.
       if (
+        initialCmv !== null &&
+        initialCmv > MAX_COHERENT_CMV_THRESHOLD
+      ) {
+        const presentation = productPresentation(row, data);
+        const multipliedPrice = normalized.originalPrice * presentation;
+        normalizedPrice = multipliedPrice;
+        conversionCmv =
+          sogamaxFullCost > 0 && multipliedPrice > 0
+            ? (sogamaxFullCost / multipliedPrice) * 100
+            : null;
+        resolvedByHighInitialCmv =
+          Math.abs(multipliedPrice - normalized.originalPrice) > 0.000001;
+        conversionRule = `Validação por CMV: CMV inicial ${initialCmv.toFixed(2).replace(".", ",")}% > ${MAX_COHERENT_CMV_THRESHOLD}% → ${money(normalized.originalPrice)} × ${presentation}; resultado mantido sem nova decisão`;
+      } else if (
         conversionCmv !== null &&
         conversionCmv > MAX_COHERENT_CMV_THRESHOLD &&
         initialCmv !== null
@@ -307,22 +322,6 @@ function summarizeProduct(data: ProductData, row: DescriptionRow) {
           normalizedPrice = normalized.originalPrice;
           conversionCmv = initialCmv;
           conversionRule = `Validação por CMV: preço original gera ${initialCmv.toFixed(2).replace(".", ",")}% (faixa de ${FULL_PRICE_CMV_THRESHOLD}% a ${MAX_COHERENT_CMV_THRESHOLD}%) → nenhuma conversão; QTDE_EMBALAGEM logística ignorada`;
-        } else if (initialCmv > MAX_COHERENT_CMV_THRESHOLD) {
-          const presentation = productPresentation(row, data);
-          const multipliedPrice = normalized.originalPrice * presentation;
-          const multipliedCmv =
-            multipliedPrice > 0
-              ? (sogamaxFullCost / multipliedPrice) * 100
-              : null;
-          if (
-            multipliedCmv !== null &&
-            multipliedCmv >= FULL_PRICE_CMV_THRESHOLD &&
-            multipliedCmv <= MAX_COHERENT_CMV_THRESHOLD
-          ) {
-            normalizedPrice = multipliedPrice;
-            conversionCmv = multipliedCmv;
-            conversionRule = `Validação por CMV: CMV inicial ${initialCmv.toFixed(2).replace(".", ",")}% > ${MAX_COHERENT_CMV_THRESHOLD}% → ${money(normalized.originalPrice)} × ${presentation}`;
-          }
         }
       }
 
@@ -330,6 +329,7 @@ function summarizeProduct(data: ProductData, row: DescriptionRow) {
         Math.abs(normalizedPrice - normalized.originalPrice) > 0.000001;
       const usedFullPrice =
         conversionApplied &&
+        !resolvedByHighInitialCmv &&
         conversionCmv !== null &&
         conversionCmv < FULL_PRICE_CMV_THRESHOLD;
       const effectivePrice = usedFullPrice
@@ -1384,11 +1384,11 @@ function ProductPopup({
               Ranking calculado pelo preço considerado. Quando o cliente informa
               o preço de uma caixa, pacote ou fardo, o valor é dividido pela
               quantidade contida. A coerência é conferida pelo CMV: resultados
-              acima de 250% são reavaliados com o preço original e com a
-              apresentação Sogamax. Se o CMV após qualquer conversão ficar
-              abaixo de 30%, a regra comercial mantém o preço original no
-              ranking e nos cálculos. A regra aplicada fica registrada em cada
-              oferta.
+              iniciais acima de 250% multiplicam o preço pela apresentação
+              Sogamax, e esse resultado não passa novamente pela trava de 30%.
+              Nos demais casos, se o CMV após a conversão ficar abaixo de 30%,
+              a regra comercial mantém o preço original no ranking e nos
+              cálculos. A regra aplicada fica registrada em cada oferta.
               {summary.ownOffersExcluded > 0 && (
                 <>
                   <br />
