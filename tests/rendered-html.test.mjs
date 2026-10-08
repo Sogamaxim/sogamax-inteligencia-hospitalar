@@ -59,7 +59,7 @@ test("applies the full-price rule to the mandatory tongue-depressor case", async
   const effectivePrice =
     initialCmv < 30
       ? offer.price / data.sogamaxPresentation
-      : initialCmv > 250
+      : initialCmv > 200
         ? offer.price * data.sogamaxPresentation
         : offer.price;
   const effectiveCmv = (data.sogamaxFullCost / effectivePrice) * 100;
@@ -142,7 +142,7 @@ test("uses the CMV coherence band for Campo Operatorio C/5", async () => {
 
   assert.ok(incorrectLogisticConversion < 0.17);
   assert.ok(initialCmv > 79.83 && initialCmv < 79.85);
-  assert.ok(initialCmv >= 30 && initialCmv <= 250);
+  assert.ok(initialCmv >= 30 && initialCmv <= 200);
   assert.equal(rioclarense.price, 5.6665);
 
   const unitRow = marketData.rows.find(
@@ -159,7 +159,7 @@ test("uses the CMV coherence band for Campo Operatorio C/5", async () => {
   const effectivePrice =
     unitInitialCmv < 30
       ? brazmix.price / unitData.sogamaxPresentation
-      : unitInitialCmv > 250
+      : unitInitialCmv > 200
         ? brazmix.price * unitData.sogamaxPresentation
         : brazmix.price;
   const effectiveCmv = (unitData.sogamaxFullCost / effectivePrice) * 100;
@@ -169,7 +169,7 @@ test("uses the CMV coherence band for Campo Operatorio C/5", async () => {
   assert.ok(effectiveCmv > 95.24 && effectiveCmv < 95.25);
 });
 
-test("keeps the multiplied price selected from an initial CMV above 250%", async () => {
+test("keeps the multiplied price selected from an initial CMV above 200%", async () => {
   const root = new URL("../", import.meta.url);
   const marketData = await readMarketData(root);
   const row = marketData.rows.find(
@@ -196,12 +196,38 @@ test("keeps the multiplied price selected from an initial CMV above 250%", async
   assert.ok(consideredCmv > 29.52 && consideredCmv < 29.53);
 });
 
+test("converts the validated Campo Operatorio case above the new 200% ceiling", async () => {
+  const root = new URL("../", import.meta.url);
+  const marketData = await readMarketData(root);
+  const row = marketData.rows.find(
+    (item) =>
+      item.standardDescription ===
+        "CAMPO OPERATORIO 25CM X 28CM PCT C/5 15G C/RX EST" &&
+      item.marketDescription ===
+        "CAMPO OPERATATRIO ESTERIL RADIOPACO 25X28 C/ 5",
+  );
+  const data = marketData.productData[String(row.id)];
+  const offer = data.offers.find(
+    (item) =>
+      item.competitor === "CA HOSPITALAR" && item.price === 1.8869,
+  );
+  const initialCmv = (data.sogamaxFullCost / offer.price) * 100;
+  const consideredPrice = offer.price * data.sogamaxPresentation;
+  const consideredCmv =
+    (data.sogamaxFullCost / consideredPrice) * 100;
+
+  assert.ok(initialCmv > 239.75 && initialCmv < 239.77);
+  assert.equal(data.sogamaxPresentation, 5);
+  assert.equal(consideredPrice, 9.4345);
+  assert.ok(consideredCmv > 47.95 && consideredCmv < 47.96);
+});
+
 test("applies the validated CMV formula once and quarantines absurd results", async () => {
   const root = new URL("../", import.meta.url);
   const source = await readFile(new URL("app/page.tsx", root), "utf8");
 
   assert.match(source, /FULL_PRICE_CMV_THRESHOLD = 30/);
-  assert.match(source, /MAX_COHERENT_CMV_THRESHOLD = 250/);
+  assert.match(source, /MAX_COHERENT_CMV_THRESHOLD = 200/);
   assert.match(source, /normalized\.originalPrice \/ presentation/);
   assert.match(source, /normalized\.originalPrice \* presentation/);
   assert.match(source, /preço original mantido/);

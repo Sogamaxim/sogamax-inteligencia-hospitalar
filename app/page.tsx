@@ -214,7 +214,7 @@ function productPresentation(row: DescriptionRow, data: ProductData) {
 }
 
 const FULL_PRICE_CMV_THRESHOLD = 30;
-const MAX_COHERENT_CMV_THRESHOLD = 250;
+const MAX_COHERENT_CMV_THRESHOLD = 200;
 const MIN_DISPLAYABLE_CMV_THRESHOLD = 1;
 const MAX_DISPLAYABLE_CMV_THRESHOLD = 500;
 
@@ -295,7 +295,7 @@ function summarizeProduct(data: ProductData, row: DescriptionRow) {
 
       // Fórmula validada no Excel. A decisão usa somente o CMV calculado com o
       // preço original e acontece uma única vez: abaixo de 30% divide, acima de
-      // 250% multiplica e, dentro da faixa, mantém o preço recebido.
+      // 200% multiplica e, dentro da faixa, mantém o preço recebido.
       if (initialCmv !== null && initialCmv < FULL_PRICE_CMV_THRESHOLD) {
         effectivePrice = normalized.originalPrice / presentation;
         conversionRule = `CMV inicial ${initialCmv.toFixed(2).replace(".", ",")}% < ${FULL_PRICE_CMV_THRESHOLD}% → ${money(normalized.originalPrice)} ÷ ${presentation}`;
@@ -1386,8 +1386,8 @@ function ProductPopup({
             </div>
             <div className="modal-note">
               Regra única baseada no CMV inicial: abaixo de 30%, o preço é
-              dividido pela apresentação Sogamax; acima de 250%, é
-              multiplicado; entre 30% e 250%, o preço original é mantido. A
+              dividido pela apresentação Sogamax; acima de 200%, é
+              multiplicado; entre 30% e 200%, o preço original é mantido. A
               decisão ocorre uma única vez. Resultados ainda incompatíveis
               após a fórmula ficam como “Revisar cadastro” e não participam do
               ranking, da média ou do menor preço.
