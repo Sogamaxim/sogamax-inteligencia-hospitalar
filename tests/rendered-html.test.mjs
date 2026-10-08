@@ -55,21 +55,19 @@ test("applies the full-price rule to the mandatory tongue-depressor case", async
     (item) => item.competitor === "LONDRICIR" && item.price === 5.47,
   );
   const standardizedUnit = unitMap[offer.unit] ?? offer.unit;
-  const isPackage = ["CAIXA", "FARDO", "PACOTE", "PACK"].includes(
-    standardizedUnit.toUpperCase(),
-  );
-  const convertedPrice = isPackage
-    ? (offer.price / offer.packSize) * data.sogamaxPresentation
-    : offer.price * data.sogamaxPresentation;
-  const convertedCmv = (data.sogamaxFullCost / convertedPrice) * 100;
-  const effectivePrice = convertedCmv < 30 ? offer.price : convertedPrice;
+  const initialCmv = (data.sogamaxFullCost / offer.price) * 100;
+  const effectivePrice =
+    initialCmv < 30
+      ? offer.price / data.sogamaxPresentation
+      : initialCmv > 250
+        ? offer.price * data.sogamaxPresentation
+        : offer.price;
   const effectiveCmv = (data.sogamaxFullCost / effectivePrice) * 100;
 
   assert.equal(standardizedUnit, "Pacote");
   assert.equal(offer.packSize, 10);
   assert.equal(offer.selected, false);
-  assert.ok(Math.abs(convertedPrice - 54.7) < 1e-9);
-  assert.ok(convertedCmv > 8.66 && convertedCmv < 8.68);
+  assert.ok(initialCmv > 86.69 && initialCmv < 86.7);
   assert.equal(effectivePrice, 5.47);
   assert.ok(effectiveCmv > 86.69 && effectiveCmv < 86.7);
   assert.notEqual(effectivePrice, 547);
@@ -157,13 +155,16 @@ test("uses the CMV coherence band for Campo Operatorio C/5", async () => {
   const brazmix = unitData.offers.find(
     (item) => item.competitor === "BRAZMIX" && item.price === 4.75,
   );
-  const convertedPrice = brazmix.price * unitData.sogamaxPresentation;
-  const convertedCmv = (unitData.sogamaxFullCost / convertedPrice) * 100;
-  const effectivePrice = convertedCmv < 30 ? brazmix.price : convertedPrice;
+  const unitInitialCmv = (unitData.sogamaxFullCost / brazmix.price) * 100;
+  const effectivePrice =
+    unitInitialCmv < 30
+      ? brazmix.price / unitData.sogamaxPresentation
+      : unitInitialCmv > 250
+        ? brazmix.price * unitData.sogamaxPresentation
+        : brazmix.price;
   const effectiveCmv = (unitData.sogamaxFullCost / effectivePrice) * 100;
 
-  assert.equal(convertedPrice, 23.75);
-  assert.ok(convertedCmv > 19.04 && convertedCmv < 19.06);
+  assert.ok(unitInitialCmv > 95.24 && unitInitialCmv < 95.25);
   assert.equal(effectivePrice, 4.75);
   assert.ok(effectiveCmv > 95.24 && effectiveCmv < 95.25);
 });
@@ -195,21 +196,18 @@ test("keeps the multiplied price selected from an initial CMV above 250%", async
   assert.ok(consideredCmv > 29.52 && consideredCmv < 29.53);
 });
 
-test("keeps the CMV limits auditable without reprocessing the high-CMV branch", async () => {
+test("applies the validated CMV formula once and quarantines absurd results", async () => {
   const root = new URL("../", import.meta.url);
   const source = await readFile(new URL("app/page.tsx", root), "utf8");
 
+  assert.match(source, /FULL_PRICE_CMV_THRESHOLD = 30/);
   assert.match(source, /MAX_COHERENT_CMV_THRESHOLD = 250/);
-  assert.match(
-    source,
-    /const usedFullPrice =\s*conversionApplied &&\s*!resolvedByHighInitialCmv &&/,
-  );
-  assert.doesNotMatch(
-    source,
-    /const usedFullPrice =\s*normalized\.priceBasis === "Embalagem"/,
-  );
-  assert.match(source, /QTDE_EMBALAGEM logística ignorada/);
-  assert.match(source, /resultado mantido sem nova decisão/);
+  assert.match(source, /normalized\.originalPrice \/ presentation/);
+  assert.match(source, /normalized\.originalPrice \* presentation/);
+  assert.match(source, /preço original mantido/);
+  assert.match(source, /MIN_DISPLAYABLE_CMV_THRESHOLD = 1/);
+  assert.match(source, /MAX_DISPLAYABLE_CMV_THRESHOLD = 500/);
+  assert.match(source, /Cadastro fora do ranking/);
 });
 
 test("builds September data from official sources and blocks unsafe matches", async () => {
@@ -291,7 +289,9 @@ test("uses only selected MedicalVM offers for demand and shows the official bran
   assert.doesNotMatch(source, /<th>Preço após conversão<\/th>/);
   assert.doesNotMatch(source, /<th>CMV após conversão<\/th>/);
   assert.doesNotMatch(source, /<th>CMV considerado<\/th>/);
-  assert.match(source, /Preço cheio aplicado no ranking/);
+  assert.match(source, /Regra única baseada no CMV inicial/);
+  assert.match(source, /Revisar cadastro/);
+  assert.match(source, /não participam do[\s\S]*ranking/);
   assert.match(source, /SELECIONADO=S/);
   assert.match(source, /filter\(\(offer\) => !isOwnSogamaxOffer\(offer\)\)/);
   assert.match(source, /oferta\(s\) da própria Sogamax/);

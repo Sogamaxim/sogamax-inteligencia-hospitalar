@@ -65,6 +65,8 @@ type NormalizedOffer = MarketOffer & {
   initialCmv: number | null;
   conversionCmv: number | null;
   usedFullPrice: boolean;
+  isComparable: boolean;
+  reviewReason: string | null;
   standardizedUnit: string;
   clientPresentation: number;
   priceBasis: "Embalagem" | "Unidade básica";
@@ -213,6 +215,8 @@ function productPresentation(row: DescriptionRow, data: ProductData) {
 
 const FULL_PRICE_CMV_THRESHOLD = 30;
 const MAX_COHERENT_CMV_THRESHOLD = 250;
+const MIN_DISPLAYABLE_CMV_THRESHOLD = 1;
+const MAX_DISPLAYABLE_CMV_THRESHOLD = 500;
 
 function normalizeOffer(
   offer: MarketOffer,
@@ -265,6 +269,8 @@ function normalizeOffer(
     initialCmv: null,
     conversionCmv: null,
     usedFullPrice: false,
+    isComparable: true,
+    reviewReason: null,
     standardizedUnit,
     clientPresentation,
     priceBasis,
@@ -283,73 +289,55 @@ function summarizeProduct(data: ProductData, row: DescriptionRow) {
         sogamaxFullCost > 0 && normalized.originalPrice > 0
           ? (sogamaxFullCost / normalized.originalPrice) * 100
           : null;
-      let normalizedPrice = normalized.normalizedPrice;
-      let conversionRule = normalized.conversionRule;
-      let conversionCmv =
-        sogamaxFullCost > 0 && normalized.normalizedPrice > 0
-          ? (sogamaxFullCost / normalized.normalizedPrice) * 100
-          : null;
-      let resolvedByHighInitialCmv = false;
+      const presentation = Math.max(productPresentation(row, data), 1);
+      let effectivePrice = normalized.originalPrice;
+      let conversionRule = "CMV inicial indisponível; preço original mantido";
 
-      // A QTDE_EMBALAGEM da MedicalVM pode representar uma caixa logística,
-      // não a apresentação comercial. A fórmula da planilha toma uma única
-      // decisão a partir do CMV inicial: acima de 250%, multiplica o preço pela
-      // apresentação Sogamax e preserva esse resultado, sem reaplicar depois a
-      // trava de 30% sobre o CMV recalculado.
-      if (
+      // Fórmula validada no Excel. A decisão usa somente o CMV calculado com o
+      // preço original e acontece uma única vez: abaixo de 30% divide, acima de
+      // 250% multiplica e, dentro da faixa, mantém o preço recebido.
+      if (initialCmv !== null && initialCmv < FULL_PRICE_CMV_THRESHOLD) {
+        effectivePrice = normalized.originalPrice / presentation;
+        conversionRule = `CMV inicial ${initialCmv.toFixed(2).replace(".", ",")}% < ${FULL_PRICE_CMV_THRESHOLD}% → ${money(normalized.originalPrice)} ÷ ${presentation}`;
+      } else if (
         initialCmv !== null &&
         initialCmv > MAX_COHERENT_CMV_THRESHOLD
       ) {
-        const presentation = productPresentation(row, data);
-        const multipliedPrice = normalized.originalPrice * presentation;
-        normalizedPrice = multipliedPrice;
-        conversionCmv =
-          sogamaxFullCost > 0 && multipliedPrice > 0
-            ? (sogamaxFullCost / multipliedPrice) * 100
-            : null;
-        resolvedByHighInitialCmv =
-          Math.abs(multipliedPrice - normalized.originalPrice) > 0.000001;
-        conversionRule = `Validação por CMV: CMV inicial ${initialCmv.toFixed(2).replace(".", ",")}% > ${MAX_COHERENT_CMV_THRESHOLD}% → ${money(normalized.originalPrice)} × ${presentation}; resultado mantido sem nova decisão`;
-      } else if (
-        conversionCmv !== null &&
-        conversionCmv > MAX_COHERENT_CMV_THRESHOLD &&
-        initialCmv !== null
-      ) {
-        if (
-          initialCmv >= FULL_PRICE_CMV_THRESHOLD &&
-          initialCmv <= MAX_COHERENT_CMV_THRESHOLD
-        ) {
-          normalizedPrice = normalized.originalPrice;
-          conversionCmv = initialCmv;
-          conversionRule = `Validação por CMV: preço original gera ${initialCmv.toFixed(2).replace(".", ",")}% (faixa de ${FULL_PRICE_CMV_THRESHOLD}% a ${MAX_COHERENT_CMV_THRESHOLD}%) → nenhuma conversão; QTDE_EMBALAGEM logística ignorada`;
-        }
+        effectivePrice = normalized.originalPrice * presentation;
+        conversionRule = `CMV inicial ${initialCmv.toFixed(2).replace(".", ",")}% > ${MAX_COHERENT_CMV_THRESHOLD}% → ${money(normalized.originalPrice)} × ${presentation}`;
+      } else if (initialCmv !== null) {
+        conversionRule = `CMV inicial ${initialCmv.toFixed(2).replace(".", ",")}% entre ${FULL_PRICE_CMV_THRESHOLD}% e ${MAX_COHERENT_CMV_THRESHOLD}% → preço original mantido`;
       }
 
-      const conversionApplied =
-        Math.abs(normalizedPrice - normalized.originalPrice) > 0.000001;
-      const usedFullPrice =
-        conversionApplied &&
-        !resolvedByHighInitialCmv &&
+      const conversionCmv =
+        sogamaxFullCost > 0 && effectivePrice > 0
+          ? (sogamaxFullCost / effectivePrice) * 100
+          : null;
+      const isComparable =
         conversionCmv !== null &&
-        conversionCmv < FULL_PRICE_CMV_THRESHOLD;
-      const effectivePrice = usedFullPrice
-        ? normalized.originalPrice
-        : normalizedPrice;
+        conversionCmv >= MIN_DISPLAYABLE_CMV_THRESHOLD &&
+        conversionCmv <= MAX_DISPLAYABLE_CMV_THRESHOLD;
+      const reviewReason = isComparable
+        ? null
+        : `Resultado inconsistente após a fórmula de CMV (${conversionCmv?.toFixed(2).replace(".", ",") ?? "indisponível"}%). Cadastro fora do ranking.`;
+      const usedFullPrice =
+        Math.abs(effectivePrice - normalized.originalPrice) <= 0.000001;
 
       return {
         ...normalized,
         price: effectivePrice,
-        normalizedPrice,
+        normalizedPrice: effectivePrice,
         effectivePrice,
         initialCmv,
         conversionCmv,
         usedFullPrice,
-        conversionRule: usedFullPrice
-          ? `${conversionRule} · CMV após conversão ${conversionCmv.toFixed(2).replace(".", ",")}% < ${FULL_PRICE_CMV_THRESHOLD}% → considerado preço cheio`
-          : conversionRule,
+        isComparable,
+        reviewReason,
+        conversionRule,
       };
     });
-  const ordered = [...offers].sort((a, b) => a.price - b.price);
+  const comparableOffers = offers.filter((offer) => offer.isComparable);
+  const ordered = [...comparableOffers].sort((a, b) => a.price - b.price);
   return {
     data,
     offers,
@@ -1243,6 +1231,8 @@ function ProductPopup({
       initialCmv: null,
       conversionCmv: null,
       usedFullPrice: false,
+      isComparable: true,
+      reviewReason: null,
       unit: "Referência interna",
       standardizedUnit: "Unidade básica",
       packSize: 1,
@@ -1253,7 +1243,10 @@ function ProductPopup({
     },
     ...offers,
   ];
-  const rankedPrices = [...allPrices].sort((a, b) => a.price - b.price);
+  const rankedPrices = [...allPrices].sort((a, b) => {
+    if (a.isComparable !== b.isComparable) return a.isComparable ? -1 : 1;
+    return a.price - b.price;
+  });
 
   return (
     <div
@@ -1319,11 +1312,17 @@ function ProductPopup({
                       <tr
                         key={`${offer.competitor}-${offer.originalPrice}-${index}`}
                         className={
-                          offer.competitor === "SOGAMAX" ? "sogamax-row" : ""
+                          offer.competitor === "SOGAMAX"
+                            ? "sogamax-row"
+                            : offer.isComparable
+                              ? ""
+                              : "review-row"
                         }
                       >
                         <td>
-                          <span className="price-rank">{index + 1}º</span>
+                          <span className="price-rank">
+                            {offer.isComparable ? `${index + 1}º` : "—"}
+                          </span>
                         </td>
                         <td>
                           <strong>{offer.competitor}</strong>
@@ -1347,29 +1346,34 @@ function ProductPopup({
                         <td>
                           <div className="rule-summary">
                             <small>{offer.conversionRule}</small>
-                            {offer.usedFullPrice && (
+                            {offer.isComparable && offer.usedFullPrice && (
+                              <>
+                                <span className="status strong">
+                                  Preço original mantido
+                                </span>
+                              </>
+                            )}
+                            {!offer.isComparable && (
                               <>
                                 <span className="status review">
-                                  CMV convertido{" "}
-                                  {offer.conversionCmv
-                                    ?.toFixed(2)
-                                    .replace(".", ",")}
-                                  % &lt; 30%
+                                  Revisar cadastro
                                 </span>
-                                <small>Preço cheio aplicado no ranking</small>
+                                <small>{offer.reviewReason}</small>
                               </>
                             )}
                           </div>
                         </td>
                         <td>
                           <strong>{money(offer.effectivePrice)}</strong>
-                          {offer.usedFullPrice && (
-                            <small>preço original da embalagem</small>
+                          {!offer.isComparable && (
+                            <small>fora do ranking</small>
                           )}
                         </td>
                         <td>
                           <strong className="cmv-value">
-                            {effectiveCmv === null
+                            {!offer.isComparable
+                              ? "Revisar"
+                              : effectiveCmv === null
                               ? "—"
                               : `${effectiveCmv.toFixed(2).replace(".", ",")}%`}
                           </strong>
@@ -1381,14 +1385,12 @@ function ProductPopup({
               </table>
             </div>
             <div className="modal-note">
-              Ranking calculado pelo preço considerado. Quando o cliente informa
-              o preço de uma caixa, pacote ou fardo, o valor é dividido pela
-              quantidade contida. A coerência é conferida pelo CMV: resultados
-              iniciais acima de 250% multiplicam o preço pela apresentação
-              Sogamax, e esse resultado não passa novamente pela trava de 30%.
-              Nos demais casos, se o CMV após a conversão ficar abaixo de 30%,
-              a regra comercial mantém o preço original no ranking e nos
-              cálculos. A regra aplicada fica registrada em cada oferta.
+              Regra única baseada no CMV inicial: abaixo de 30%, o preço é
+              dividido pela apresentação Sogamax; acima de 250%, é
+              multiplicado; entre 30% e 250%, o preço original é mantido. A
+              decisão ocorre uma única vez. Resultados ainda incompatíveis
+              após a fórmula ficam como “Revisar cadastro” e não participam do
+              ranking, da média ou do menor preço.
               {summary.ownOffersExcluded > 0 && (
                 <>
                   <br />
