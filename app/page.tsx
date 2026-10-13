@@ -923,7 +923,7 @@ function LoadedHome({ realData }: { realData: MarketData }) {
                         <th>Concorrente / marca</th>
                         <th>Preço Sogamax</th>
                         <th>Último custo comprado</th>
-                        <th>Custo médio</th>
+                        <th>Custo</th>
                         <th>CMV</th>
                         <th>Sugestão de compra</th>
                         <th>CMV</th>
@@ -1018,12 +1018,12 @@ function LoadedHome({ realData }: { realData: MarketData }) {
                             </td>
                             <td>
                               <strong>
-                                {mapped && info.data.sogamaxAverageCost
-                                  ? money(info.data.sogamaxAverageCost)
+                                {mapped && sogamaxOfficialCost > 0
+                                  ? money(sogamaxOfficialCost)
                                   : "—"}
                               </strong>
-                              {mapped && info.data.sogamaxAverageCost && (
-                                <small>valor exato da coluna CUS.MÉDIO</small>
+                              {mapped && sogamaxOfficialCost > 0 && (
+                                <small>valor exato da coluna CUSTO</small>
                               )}
                             </td>
                             <td>
