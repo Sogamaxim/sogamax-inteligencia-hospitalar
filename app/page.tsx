@@ -951,11 +951,11 @@ function LoadedHome({ realData }: { realData: MarketData }) {
                         );
                         const suggestionCmv =
                           mapped &&
+                          info.lowest &&
                           purchaseSuggestion.trim() !== "" &&
                           purchaseSuggestionValue > 0 &&
                           Number.isFinite(purchaseSuggestionValue)
-                            ? (sogamaxOfficialCost / purchaseSuggestionValue) *
-                              100
+                            ? (purchaseSuggestionValue / info.lowest.price) * 100
                             : null;
                         return (
                           <tr

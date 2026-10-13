@@ -236,6 +236,19 @@ test("applies the validated CMV formula once and quarantines absurd results", as
   assert.match(source, /Cadastro fora do ranking/);
 });
 
+test("calculates purchase suggestion CMV from the entered value divided by the best price", async () => {
+  const root = new URL("../", import.meta.url);
+  const source = await readFile(new URL("app/page.tsx", root), "utf8");
+  const exampleCmv = (10 / 7.33) * 100;
+
+  assert.equal(exampleCmv.toFixed(2), "136.43");
+  assert.match(source, /info\.lowest &&[\s\S]*purchaseSuggestionValue \/ info\.lowest\.price/);
+  assert.doesNotMatch(
+    source,
+    /sogamaxOfficialCost \/ purchaseSuggestionValue/,
+  );
+});
+
 test("builds September data from official sources and blocks unsafe matches", async () => {
   const root = new URL("../", import.meta.url);
   const marketData = await readMarketData(root);
