@@ -43,6 +43,23 @@ def number(value, default=0.0):
         return default
 
 
+def inventory_number(value):
+    """Parse the integer-like Brazilian stock column (for example 2.240)."""
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return 0.0
+    text = str(value).strip()
+    if not text:
+        return 0.0
+    if "," in text:
+        text = text.replace(".", "").replace(",", ".")
+    elif re.fullmatch(r"-?\d{1,3}(?:\.\d{3})+", text):
+        text = text.replace(".", "")
+    try:
+        return float(text)
+    except ValueError:
+        return 0.0
+
+
 def clean_text(value):
     return re.sub(r"\s+", " ", str(value or "")).strip()
 
@@ -93,17 +110,23 @@ def candidate_score(target, description):
 
 
 def choose_official(candidates):
+    candidates = candidates[candidates["VALOR"].notna() & (candidates["VALOR"] > 0)]
+    if candidates.empty:
+        return None
     active = candidates[
         ~candidates["GRUPO"].fillna("").map(norm).str.contains("DESATIVADO")
     ]
     if not active.empty:
         candidates = active
-    candidates = candidates[candidates["VALOR"].notna() & (candidates["VALOR"] > 0)]
-    if candidates.empty:
-        return None
-    # Approved global rule: when official records share the same resolved
-    # Sogamax description, use the lowest positive official VALOR and record it.
-    return candidates.sort_values(["VALOR", "Id"], ascending=[True, True]).iloc[0]
+    stocked = candidates[candidates["ESTOQUE"].fillna(0) > 0]
+    if not stocked.empty:
+        candidates = stocked
+    # Global commercial rule for duplicate official descriptions: use an
+    # active, stocked record with the greatest availability. Price only breaks
+    # a stock tie, preventing stale quotation IDs from supplying price/cost.
+    return candidates.sort_values(
+        ["ESTOQUE", "VALOR", "Id"], ascending=[False, True, True]
+    ).iloc[0]
 
 
 def resolve_target(target, exact_groups, identity_index):
@@ -154,7 +177,7 @@ def main():
     mapping["target_key"] = mapping["target"].map(norm)
 
     prices = pd.read_excel(args.prices)
-    for column in ("CUSTO", "GRUPO"):
+    for column in ("CUSTO", "GRUPO", "ESTOQUE"):
         if column not in prices:
             prices[column] = None
     prices["CUSTO_MEDIO"] = None
@@ -202,6 +225,8 @@ def main():
                 "average_cost": cost_number(cost_row["CUSTO_MEDIO"]),
                 "last_purchase_cost": cost_number(cost_row["VLR_ULTIMA_COMPRA"]),
                 "last_purchase_date": clean_text(cost_row["ULTIMA_COMPRA_DATA"]),
+                "stock": inventory_number(cost_row["ESTOQUE"]),
+                "group": clean_text(cost_row["GRUPO"]),
             }
         cost_rows = len(cost_table)
 
@@ -244,6 +269,16 @@ def main():
             if pd.notna(value)
             else None
         )
+        prices["ESTOQUE"] = prices["ID"].map(
+            lambda value: costs_by_id.get(int(value), {}).get("stock")
+            if pd.notna(value)
+            else None
+        )
+        prices["GRUPO"] = prices["ID"].map(
+            lambda value: costs_by_id.get(int(value), {}).get("group")
+            if pd.notna(value)
+            else None
+        )
 
     existing_presentations = {}
     presentations_path = (
@@ -258,7 +293,7 @@ def main():
     if args.presentations:
         presentations = pd.read_excel(args.presentations)
         catalog = presentations.merge(
-            prices[["ID", "EAN", "DESCRICAO", "MARCA", "VALOR", "CUSTO", "CUSTO_MEDIO", "ULTIMO_CUSTO_ENTRADA", "GRUPO"]],
+            prices[["ID", "EAN", "DESCRICAO", "MARCA", "VALOR", "CUSTO", "CUSTO_MEDIO", "ULTIMO_CUSTO_ENTRADA", "GRUPO", "ESTOQUE"]],
             left_on="Id",
             right_on="ID",
             how="left",
@@ -409,7 +444,7 @@ def main():
                 evidence.append("Cadastro oficial localizado por equivalência conservadora")
             if len(candidates) > 1:
                 evidence.append(
-                    f"{len(candidates)} cadastros oficiais com descrição idêntica; menor VALOR positivo aplicado"
+                    f"{len(candidates)} cadastros oficiais com descrição idêntica; cadastro ativo com maior estoque aplicado"
                 )
             product = {
                 "sogamaxPrice": round(unit_price, 6),

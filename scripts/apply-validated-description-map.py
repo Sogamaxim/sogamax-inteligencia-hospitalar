@@ -120,6 +120,36 @@ def flags(value):
     }
 
 
+def product_sizes(value):
+    """Return commercial sizes without confusing G (large) with grams.
+
+    Explicit TAM/TAMANHO markers work for every product.  A standalone size is
+    also accepted for gloves, whose market descriptions commonly omit TAM.
+    """
+    text = norm(value)
+    canonical = {"GG": "XG", "XG": "XG", "EG": "XG"}
+    sizes = set()
+    for size in re.findall(
+        r"\b(?:TAM|TAMANHO)\s*(PP|P|M|G|GG|XG|EG)\b", text
+    ):
+        sizes.add(canonical.get(size, size))
+    words = text
+    if re.search(r"\bEXTRA\s+GRANDE\b", words):
+        sizes.add("XG")
+        words = re.sub(r"\bEXTRA\s+GRANDE\b", " ", words)
+    aliases = {
+        "PEQUENO": "P", "PEQUENA": "P",
+        "MEDIO": "M", "MEDIA": "M", "GRANDE": "G",
+    }
+    for label, size in aliases.items():
+        if re.search(rf"\b{label}\b", words):
+            sizes.add(size)
+    if "LUVA" in text:
+        for size in re.findall(r"\b(PP|P|M|G|GG|XG|EG)\b", text):
+            sizes.add(canonical.get(size, size))
+    return sizes
+
+
 def incompatibilities(source, target):
     reasons = []
     source_tokens, target_tokens = identity_tokens(source), identity_tokens(target)
@@ -146,6 +176,12 @@ def incompatibilities(source, target):
         )
         if not dimensions_match:
             reasons.append(f"dimensão incompatível: {source_dimensions} x {target_dimensions}")
+
+    source_sizes, target_sizes = product_sizes(source), product_sizes(target)
+    if source_sizes and target_sizes and not source_sizes.intersection(target_sizes):
+        reasons.append(
+            f"tamanho incompatível: {sorted(source_sizes)} x {sorted(target_sizes)}"
+        )
 
     source_flags, target_flags = flags(source), flags(target)
     if source_flags["iv"] and target_flags["im"] and not target_flags["iv"]:
