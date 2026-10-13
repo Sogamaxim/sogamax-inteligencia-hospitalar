@@ -1,42 +1,46 @@
 {
-  "generatedAt": "2026-10-06",
+  "generatedAt": "2026-10-13",
   "sources": {
-    "medicalVmSeptember": {
-      "file": "LINEASLICITACION_13806_02102026.42511902102026.csv",
-      "sha256": "a3712995e8ab33fa28c85e9133e421012f6471411f0a58b467abc3e6b4264c48",
-      "rows": 173495
+    "medicalVmOctoberFirstWeek": {
+      "file": "LINEASLICITACION_13806_13102026.12201913102026.csv",
+      "sha256": "60de62bfca64e8fb4e2347ce0f38ed472f6405186e0ca9cb645ce809fa80ad95",
+      "rows": 50312,
+      "quotationDateRange": "2026-10-01/2026-10-09"
     },
-    "deParaSeptember": {
-      "file": "DE-PARA SETEMBRO - INTELIGÊNCIA ARTIFICIAL.xlsx",
-      "sha256": "903eb0b378b9ef184936114bcdaeaa3ebf52fc3fdbf1cdd59eeb3d0949edd0a4",
+    "deParaCurrent": {
+      "file": "De-Para 1.xlsx",
+      "sha256": "ba65c8747fef0188f2bbc09d8a65787d4b9e08620672d5331661e8599b50f0df",
       "rows": 14318
     },
     "sogamaxPrices": {
-      "file": "651 - TB ROBÔ PLATAFORMAS.xlsx",
-      "sha256": "227ba660630b58d9de81891ccc4007d839f391a4bc63286366bc77a29dd592bd",
-      "rows": 5053
+      "file": "596 (13-10-2026).xlsx",
+      "sha256": "7bc5ad85bf62e1b17efb7461d5ae733f8cabf97cccffaa7ffcef6750fcb21b4e",
+      "rows": 5055,
+      "columns": ["ID", "EAN", "DESCRICAO", "MARCA", "VALOR"]
     },
-    "sogamaxPresentations": {
-      "file": "Planilha_de_Apresentacao_dos_Produtos_preenchida_v2.xlsx",
-      "sha256": "be13fa06cac741819c010c8e9343a69af9fef764e606aca63551e1ce429f4270",
-      "rows": 4854
+    "preservedReferenceData": {
+      "presentationRowsMatchedByDescription": 4740,
+      "costProductIdsMatchedFromPreviousValidatedBase": 512,
+      "note": "A tabela 596 recebida não contém CUSTO nem GRUPO; nenhum custo novo foi inferido."
     }
   },
   "result": {
-    "marketDataSha256": "c63108cad841e25d5a15fdac4a55e422a25eb59bf7c79d69bb3d064460dbab1b",
-    "marketDataGzipSha256": "55ddaaa02d49cdbf987f476c0e747a2abae375176633cce760fefa9a0d4effb4",
-    "cleanDescriptions": 16444,
-    "standardized": 3918,
-    "review": 12526,
+    "marketDataSha256": "bedc500bcb1036706625d4d097bb21f635418da750f542fc9facf5599714a418",
+    "marketDataGzipSha256": "2a8222f23450d470cac1a9fc9187f943eac8e21b0c503589936afbfd92f5d1d8",
+    "cleanDescriptions": 6527,
+    "standardized": 1347,
+    "standardizedWithCost": 1316,
+    "standardizedWithoutCost": 31,
+    "review": 5180,
     "resolution": {
-      "exact": 3585,
-      "semanticConservative": 353,
-      "incompatible": 633,
-      "ambiguousOfficialTarget": 135,
-      "contradictoryMapping": 11,
-      "missingOfficialTarget": 56,
-      "explicitNoMatch": 8621,
-      "absentFromMapping": 3050
+      "exact": 1219,
+      "semanticConservative": 128,
+      "incompatible": 165,
+      "ambiguousOfficialTarget": 60,
+      "contradictoryMapping": 9,
+      "missingOfficialTarget": 35,
+      "explicitNoMatch": 2497,
+      "absentFromMapping": 2414
     }
   }
 }

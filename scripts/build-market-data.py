@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Build the static MedicalVM dataset from the official September sources.
+"""Build the static MedicalVM dataset from the supplied official sources.
 
-The generator is deliberately conservative: a DE/PARA entry only receives
-Sogamax price and cost when the medical identity is compatible and the target
-can be resolved unambiguously in the official Sogamax tables.
+The generator is deliberately conservative: a DE/PARA entry only receives a
+Sogamax price when the medical identity is compatible and the target can be
+resolved unambiguously. Cost is only carried forward when the same official
+product ID had a previously validated cost.
 """
 
 import argparse
@@ -49,8 +50,11 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--market-csv", required=True)
     parser.add_argument("--mapping", required=True)
-    parser.add_argument("--presentations", required=True)
+    parser.add_argument("--presentations")
+    parser.add_argument("--presentation-fallback-json")
     parser.add_argument("--prices", required=True)
+    parser.add_argument("--previous-market-data")
+    parser.add_argument("--period", required=True)
     parser.add_argument("--unit-map", required=True)
     parser.add_argument("--market-data", required=True)
     parser.add_argument("--presentations-json", required=True)
@@ -92,15 +96,10 @@ def choose_official(candidates):
     ]
     if not active.empty:
         candidates = active
-    candidates = candidates[
-        candidates["VALOR"].notna()
-        & (candidates["VALOR"] > 0)
-        & candidates["CUSTO"].notna()
-        & (candidates["CUSTO"] >= 0)
-    ]
+    candidates = candidates[candidates["VALOR"].notna() & (candidates["VALOR"] > 0)]
     if candidates.empty:
         return None
-    # Approved September rule: when official records share the same resolved
+    # Approved global rule: when official records share the same resolved
     # Sogamax description, use the lowest positive official VALOR and record it.
     return candidates.sort_values(["VALOR", "Id"], ascending=[True, True]).iloc[0]
 
@@ -110,7 +109,9 @@ def resolve_target(target, exact_groups, identity_index):
     exact = exact_groups.get(target_key)
     if exact is not None:
         selected = choose_official(exact)
-        return selected, "exact", [] if selected is not None else ["cadastro sem preço positivo"]
+        if selected is None:
+            return None, "missing", ["cadastro sem preço positivo"]
+        return selected, "exact", []
 
     target_identity = identity_tokens(target)
     if target_identity:
@@ -151,19 +152,68 @@ def main():
     mapping["target_key"] = mapping["target"].map(norm)
 
     prices = pd.read_excel(args.prices)
-    presentations = pd.read_excel(args.presentations)
-    catalog = presentations.merge(
-        prices[["ID", "EAN", "DESCRICAO", "MARCA", "VALOR", "CUSTO", "GRUPO"]],
-        left_on="Id",
-        right_on="ID",
-        how="left",
-        suffixes=("", "_preco"),
+    for column in ("CUSTO", "GRUPO"):
+        if column not in prices:
+            prices[column] = None
+
+    previous_by_id = {}
+    if args.previous_market_data:
+        previous_path = Path(args.previous_market_data)
+        opener = gzip.open if previous_path.suffix == ".gz" else open
+        with opener(previous_path, "rt", encoding="utf-8") as handle:
+            previous = json.load(handle)
+        for product in previous.get("productData", {}).values():
+            product_id = product.get("sogamaxProductId")
+            full_cost = product.get("sogamaxFullCost")
+            if product_id is not None and full_cost is not None and full_cost >= 0:
+                previous_by_id[int(product_id)] = {
+                    "cost": float(full_cost),
+                    "presentation": int(product.get("sogamaxPresentation") or 1),
+                }
+        missing_cost = prices["CUSTO"].isna()
+        prices.loc[missing_cost, "CUSTO"] = prices.loc[missing_cost, "ID"].map(
+            lambda value: previous_by_id.get(int(value), {}).get("cost")
+            if pd.notna(value)
+            else None
+        )
+
+    existing_presentations = {}
+    presentations_path = (
+        Path(args.presentation_fallback_json)
+        if args.presentation_fallback_json
+        else Path(args.presentations_json)
     )
+    if presentations_path.exists():
+        with presentations_path.open(encoding="utf-8") as handle:
+            existing_presentations = json.load(handle)
+
+    if args.presentations:
+        presentations = pd.read_excel(args.presentations)
+        catalog = presentations.merge(
+            prices[["ID", "EAN", "DESCRICAO", "MARCA", "VALOR", "CUSTO", "GRUPO"]],
+            left_on="Id",
+            right_on="ID",
+            how="left",
+            suffixes=("", "_preco"),
+        )
+        catalog["presentation_qty"] = catalog.apply(
+            lambda row: presentation_quantity(row["Descrição"], row["Apresentação"]),
+            axis=1,
+        )
+    else:
+        presentations = prices[["ID", "DESCRICAO"]].rename(
+            columns={"ID": "Id", "DESCRICAO": "Descrição"}
+        )
+        catalog = prices.rename(columns={"ID": "Id", "DESCRICAO": "Descrição"}).copy()
+        catalog["presentation_qty"] = catalog.apply(
+            lambda row: int(
+                existing_presentations.get(clean_text(row["Descrição"]))
+                or previous_by_id.get(int(row["Id"]), {}).get("presentation")
+                or presentation_quantity(row["Descrição"], None)
+            ),
+            axis=1,
+        )
     catalog["target_key"] = catalog["Descrição"].map(norm)
-    catalog["presentation_qty"] = catalog.apply(
-        lambda row: presentation_quantity(row["Descrição"], row["Apresentação"]),
-        axis=1,
-    )
     exact_groups = {
         key: group.copy() for key, group in catalog.groupby("target_key", sort=False)
     }
@@ -210,7 +260,7 @@ def main():
         resolution = "unmapped"
 
         if mapping_group is None:
-            reasons = ["Descrição ausente do DE/PARA de setembro"]
+            reasons = ["Descrição ausente do DE/PARA vigente"]
         else:
             non_dash = mapping_group[
                 mapping_group["target"].astype(str).str.strip().ne("-")
@@ -223,7 +273,7 @@ def main():
                 None,
             )
             if not targets:
-                reasons = ["DE/PARA de setembro sem correspondência Sogamax"]
+                reasons = ["DE/PARA vigente sem correspondência Sogamax"]
                 resolution = "dash"
             elif len(targets) > 1:
                 target_names = sorted(
@@ -253,17 +303,25 @@ def main():
             standard_description = clean_text(selected["Descrição"])
             presentation = int(selected["presentation_qty"])
             full_price = float(selected["VALOR"])
-            full_cost = float(selected["CUSTO"])
+            full_cost = (
+                float(selected["CUSTO"]) if pd.notna(selected["CUSTO"]) else None
+            )
             unit_price = full_price / presentation
-            unit_cost = full_cost / presentation
+            unit_cost = full_cost / presentation if full_cost is not None else 0
             candidates = exact_groups[norm(standard_description)]
             evidence = [
-                "Correspondência validada pelo DE/PARA de setembro",
+                "Correspondência validada pelo DE/PARA vigente",
                 "Dose, concentração, volume, via, tamanho e esterilidade auditados",
                 f"Produto Sogamax ID {int(selected['Id'])}",
                 f"Marca Sogamax: {clean_text(selected['MARCA'])}",
                 f"Apresentação Sogamax: C/{presentation}",
             ]
+            if full_cost is None:
+                evidence.append(
+                    "Custo não informado na tabela recebida; CMV indisponível"
+                )
+            elif int(selected["Id"]) in previous_by_id:
+                evidence.append("Custo anterior preservado pelo mesmo ID Sogamax")
             if resolution == "semantic":
                 evidence.append(f"Destino do DE/PARA: {target}")
                 evidence.append("Cadastro oficial localizado por equivalência conservadora")
@@ -281,7 +339,7 @@ def main():
                 "sogamaxPresentation": presentation,
                 "sogamaxBrand": clean_text(selected["MARCA"]),
                 "sogamaxFullPrice": round(full_price, 6),
-                "sogamaxFullCost": round(full_cost, 6),
+                "sogamaxFullCost": round(full_cost, 6) if full_cost is not None else 0,
                 "sogamaxPriceSource": "Tabela oficial Sogamax",
             }
         else:
@@ -359,7 +417,7 @@ def main():
                 "Revisar": status_counts["Revisar"],
             },
             "marketFile": Path(args.market_csv).name,
-            "period": "2026-09-30",
+            "period": args.period,
         },
         "rows": rows,
         "productData": product_data,
@@ -377,7 +435,15 @@ def main():
             "market_csv": Path(args.market_csv).name,
             "mapping": Path(args.mapping).name,
             "prices": Path(args.prices).name,
-            "presentations": Path(args.presentations).name,
+            "presentations": (
+                Path(args.presentations).name
+                if args.presentations
+                else (
+                    Path(args.presentation_fallback_json).name
+                    if args.presentation_fallback_json
+                    else "apresentações anteriores por ID + leitura da descrição"
+                )
+            ),
         },
         "counts": {
             "market_lines": market_lines,
@@ -385,6 +451,9 @@ def main():
             "mapping_rows": int(len(mapping)),
             "sogamax_price_rows": int(len(prices)),
             "sogamax_presentation_rows": int(len(presentations)),
+            "sogamax_cost_rows_from_previous_id": int(
+                prices["ID"].isin(previous_by_id).sum()
+            ),
             "status": dict(status_counts),
             "resolution": dict(resolution_counts),
         },

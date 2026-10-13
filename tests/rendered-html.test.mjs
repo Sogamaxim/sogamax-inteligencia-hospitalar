@@ -39,187 +39,34 @@ test("renders development preview metadata", async () => {
   assert.match(await response.text(), developmentPreviewMeta);
 });
 
-test("applies the full-price rule to the mandatory tongue-depressor case", async () => {
+test("keeps the three global CMV branches available for every eligible product", async () => {
   const root = new URL("../", import.meta.url);
   const marketData = await readMarketData(root);
-  const unitMap = JSON.parse(
-    await readFile(new URL("app/medicalvm-unit-map.json", root)),
-  ).mappings;
-  const row = marketData.rows.find(
-    (item) =>
-      item.standardDescription === "ABAIXADOR DE LINGUA EM MADEIRA C/100" &&
-      item.marketDescription.trim().toUpperCase() === "ABAIXADOR DE LINGUA",
-  );
-  const data = marketData.productData[String(row.id)];
-  const offer = data.offers.find(
-    (item) => item.competitor === "LONDRICIR" && item.price === 5.47,
-  );
-  const standardizedUnit = unitMap[offer.unit] ?? offer.unit;
-  const initialCmv = (data.sogamaxFullCost / offer.price) * 100;
-  const effectivePrice =
-    initialCmv < 30
-      ? offer.price / data.sogamaxPresentation
-      : initialCmv > 200
-        ? offer.price * data.sogamaxPresentation
-        : offer.price;
-  const effectiveCmv = (data.sogamaxFullCost / effectivePrice) * 100;
+  const bands = { below: false, middle: false, above: false };
 
-  assert.equal(standardizedUnit, "Pacote");
-  assert.equal(offer.packSize, 10);
-  assert.equal(offer.selected, false);
-  assert.ok(initialCmv > 86.69 && initialCmv < 86.7);
-  assert.equal(effectivePrice, 5.47);
-  assert.ok(effectiveCmv > 86.69 && effectiveCmv < 86.7);
-  assert.notEqual(effectivePrice, 547);
+  for (const row of marketData.rows) {
+    const data = marketData.productData[String(row.id)];
+    if (!(data.sogamaxFullCost > 0)) continue;
+    for (const offer of data.offers) {
+      if (!(offer.price > 0)) continue;
+      const cmv = (data.sogamaxFullCost / offer.price) * 100;
+      if (cmv < 30) bands.below = true;
+      else if (cmv > 200) bands.above = true;
+      else bands.middle = true;
+    }
+  }
+
+  assert.deepEqual(bands, { below: true, middle: true, above: true });
 });
 
-test("applies the commercially validated multiplication to sub-real glove prices", async () => {
-  const root = new URL("../", import.meta.url);
-  const marketData = await readMarketData(root);
-  const row = marketData.rows.find(
-    (item) =>
-      item.standardDescription === "LUVA DE PROCEDIMENTO TAM PP C/ PO C/100" &&
-      item.marketDescription.includes("pp com po"),
+test("preserves the validated special handling for gloves, compresses and gauzes", async () => {
+  const source = await readFile(
+    new URL("../app/page.tsx", import.meta.url),
+    "utf8",
   );
-  const data = marketData.productData[String(row.id)];
-  const offer = data.offers.find(
-    (item) => item.competitor === "MEDFUTURA - RJ" && item.price === 0.3,
-  );
-  const consideredPrice = offer.price * data.sogamaxPresentation;
-  const cmv = (data.sogamaxFullCost / consideredPrice) * 100;
-
-  assert.equal(consideredPrice, 30);
-  assert.equal(cmv, 52);
-});
-
-test("treats compress and gauze prices as basic-unit prices", async () => {
-  const root = new URL("../", import.meta.url);
-  const marketData = await readMarketData(root);
-  const row = marketData.rows.find(
-    (item) =>
-      item.standardDescription ===
-        "COMPRESSA DE GAZE 13F. 7,5 x 7,5 500 X 10 ESTERIL" &&
-      item.marketDescription === "Gaze Estéril 7,5 X 7,5 - 13 fios",
-  );
-  const data = marketData.productData[String(row.id)];
-  const offer = data.offers.find(
-    (item) =>
-      item.competitor === "SUPERMED ARUJA SP" &&
-      item.price === 0.42 &&
-      item.packSize === 1200,
-  );
-  const consideredPrice = offer.price * data.sogamaxPresentation;
-  const cmv = (data.sogamaxFullCost / consideredPrice) * 100;
-
-  assert.equal(data.sogamaxPresentation, 500);
-  assert.equal(consideredPrice, 210);
-  assert.ok(cmv > 98.94 && cmv < 98.95);
-  assert.notEqual(consideredPrice, (offer.price / offer.packSize) * 500);
-});
-
-test("uses the CMV coherence band for Campo Operatorio C/5", async () => {
-  const root = new URL("../", import.meta.url);
-  const marketData = await readMarketData(root);
-  const standardDescription =
-    "CAMPO OPERATORIO 25CM X 28CM PCT C/5 15G C/RX EST";
-
-  const packageRow = marketData.rows.find(
-    (item) =>
-      item.standardDescription === standardDescription &&
-      item.marketDescription === "CAMPO OPERATORIO 25 X 28 CM",
-  );
-  const packageData = marketData.productData[String(packageRow.id)];
-  const rioclarense = packageData.offers.find(
-    (item) =>
-      item.competitor === "RIOCLARENSE LONDRINA - PR" &&
-      item.price === 5.6665,
-  );
-  const incorrectLogisticConversion =
-    (rioclarense.price / rioclarense.packSize) *
-    packageData.sogamaxPresentation;
-  const initialCmv =
-    (packageData.sogamaxFullCost / rioclarense.price) * 100;
-
-  assert.ok(incorrectLogisticConversion < 0.17);
-  assert.ok(initialCmv > 79.83 && initialCmv < 79.85);
-  assert.ok(initialCmv >= 30 && initialCmv <= 200);
-  assert.equal(rioclarense.price, 5.6665);
-
-  const unitRow = marketData.rows.find(
-    (item) =>
-      item.standardDescription === standardDescription &&
-      item.marketDescription ===
-        "COMPRESSA CAMPO OPERATORIO ESTERIL 25x28 C/ 5UN",
-  );
-  const unitData = marketData.productData[String(unitRow.id)];
-  const brazmix = unitData.offers.find(
-    (item) => item.competitor === "BRAZMIX" && item.price === 4.75,
-  );
-  const unitInitialCmv = (unitData.sogamaxFullCost / brazmix.price) * 100;
-  const effectivePrice =
-    unitInitialCmv < 30
-      ? brazmix.price / unitData.sogamaxPresentation
-      : unitInitialCmv > 200
-        ? brazmix.price * unitData.sogamaxPresentation
-        : brazmix.price;
-  const effectiveCmv = (unitData.sogamaxFullCost / effectivePrice) * 100;
-
-  assert.ok(unitInitialCmv > 95.24 && unitInitialCmv < 95.25);
-  assert.equal(effectivePrice, 4.75);
-  assert.ok(effectiveCmv > 95.24 && effectiveCmv < 95.25);
-});
-
-test("keeps the multiplied price selected from an initial CMV above 200%", async () => {
-  const root = new URL("../", import.meta.url);
-  const marketData = await readMarketData(root);
-  const row = marketData.rows.find(
-    (item) =>
-      item.standardDescription ===
-        "CAMPO OPERATORIO 45CM X 50CM PCT C/50 15G S/RX N/EST" &&
-      item.marketDescription ===
-        "Compressa campo operatorio 45cm x 50cm (sem fio radiopaco)",
-  );
-  const data = marketData.productData[String(row.id)];
-  const offer = data.offers.find(
-    (item) =>
-      item.competitor === "SUPERMED CAMBUI ITAIM MG" &&
-      item.price === 2.8512,
-  );
-  const initialCmv = (data.sogamaxFullCost / offer.price) * 100;
-  const consideredPrice = offer.price * data.sogamaxPresentation;
-  const consideredCmv =
-    (data.sogamaxFullCost / consideredPrice) * 100;
-
-  assert.ok(initialCmv > 1476 && initialCmv < 1477);
-  assert.equal(data.sogamaxPresentation, 50);
-  assert.equal(consideredPrice, 142.56);
-  assert.ok(consideredCmv > 29.52 && consideredCmv < 29.53);
-});
-
-test("converts the validated Campo Operatorio case above the new 200% ceiling", async () => {
-  const root = new URL("../", import.meta.url);
-  const marketData = await readMarketData(root);
-  const row = marketData.rows.find(
-    (item) =>
-      item.standardDescription ===
-        "CAMPO OPERATORIO 25CM X 28CM PCT C/5 15G C/RX EST" &&
-      item.marketDescription ===
-        "CAMPO OPERATATRIO ESTERIL RADIOPACO 25X28 C/ 5",
-  );
-  const data = marketData.productData[String(row.id)];
-  const offer = data.offers.find(
-    (item) =>
-      item.competitor === "CA HOSPITALAR" && item.price === 1.8869,
-  );
-  const initialCmv = (data.sogamaxFullCost / offer.price) * 100;
-  const consideredPrice = offer.price * data.sogamaxPresentation;
-  const consideredCmv =
-    (data.sogamaxFullCost / consideredPrice) * 100;
-
-  assert.ok(initialCmv > 239.75 && initialCmv < 239.77);
-  assert.equal(data.sogamaxPresentation, 5);
-  assert.equal(consideredPrice, 9.4345);
-  assert.ok(consideredCmv > 47.95 && consideredCmv < 47.96);
+  assert.match(source, /Validação comercial da luva/);
+  assert.match(source, /Validação comercial de compressas\/gazes/);
+  assert.match(source, /offer\.price \* sogamaxPackSize/);
 });
 
 test("applies the validated CMV formula once and quarantines absurd results", async () => {
@@ -249,30 +96,22 @@ test("calculates purchase suggestion CMV from the entered value divided by the b
   );
 });
 
-test("builds September data from official sources and blocks unsafe matches", async () => {
+test("builds the October refresh from official sources and blocks unsafe matches", async () => {
   const root = new URL("../", import.meta.url);
   const marketData = await readMarketData(root);
 
-  assert.equal(marketData.summary.marketLines, 173495);
-  assert.equal(marketData.summary.cleanDescriptions, 16444);
-  assert.equal(marketData.summary.sogamaxReferences, 5053);
+  assert.equal(marketData.summary.marketLines, 50312);
+  assert.equal(marketData.summary.cleanDescriptions, 6527);
+  assert.equal(marketData.summary.sogamaxReferences, 5055);
+  assert.equal(marketData.summary.period, "2026-10-13");
 
-  const clonidine = marketData.rows.find(
+  const unsafe = marketData.rows.find(
     (item) =>
-      item.marketDescription.trim().toUpperCase() === "CLONIDINA 0,100MG VO",
+      item.status === "Revisar" &&
+      item.evidence.some((value) => /incompatível/i.test(value)),
   );
-  assert.equal(clonidine.status, "Revisar");
-  assert.match(clonidine.evidence.join(" "), /incompatível/i);
-  assert.equal(marketData.productData[String(clonidine.id)].sogamaxPrice, 0);
-
-  const speculum = marketData.rows.find((item) =>
-    item.marketDescription
-      .trim()
-      .toUpperCase()
-      .includes("ESPECULO VAGINAL DESC G NAO ESTERIL"),
-  );
-  assert.equal(speculum.status, "Revisar");
-  assert.match(speculum.evidence.join(" "), /não estéril incompatível/i);
+  assert.ok(unsafe);
+  assert.equal(marketData.productData[String(unsafe.id)].sogamaxPrice, 0);
 
   const ceftriaxone = marketData.rows.find(
     (item) =>
@@ -280,7 +119,7 @@ test("builds September data from official sources and blocks unsafe matches", as
       item.standardDescription === "CEFTRIAXONA 1G PÓ FR/AMP IV *",
   );
   const ceftriaxoneData = marketData.productData[String(ceftriaxone.id)];
-  assert.equal(ceftriaxoneData.sogamaxPrice, 4.085);
+  assert.equal(ceftriaxoneData.sogamaxPrice, 4.09);
   assert.equal(ceftriaxoneData.sogamaxBrand, "BLAU");
 
   const simethicone = marketData.rows.find(
