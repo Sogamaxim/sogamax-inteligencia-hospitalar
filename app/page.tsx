@@ -34,6 +34,7 @@ type MarketOffer = {
 type ProductData = {
   sogamaxPrice: number;
   sogamaxCost: number;
+  sogamaxAverageCost?: number | null;
   lastPurchaseCost?: number | null;
   sogamaxProductId?: number;
   sogamaxPresentation?: number;
@@ -1002,24 +1003,27 @@ function LoadedHome({ realData }: { realData: MarketData }) {
                               </small>
                             </td>
                             <td>
-                              <strong>—</strong>
+                              <strong>
+                                {mapped && info.data.lastPurchaseCost
+                                  ? money(info.data.lastPurchaseCost)
+                                  : "—"}
+                              </strong>
                               <small>
-                                {mapped
-                                  ? "não disponível na tabela oficial"
+                                {mapped && info.data.lastPurchaseCost
+                                  ? "valor exato da coluna VLR ÚLT.COMPRA"
+                                  : mapped
+                                    ? "sem última entrada informada"
                                   : "aguardando validação"}
                               </small>
                             </td>
                             <td>
                               <strong>
-                                {mapped
-                                  ? money(
-                                      info.data.sogamaxFullCost ??
-                                        info.data.sogamaxCost,
-                                    )
+                                {mapped && info.data.sogamaxAverageCost
+                                  ? money(info.data.sogamaxAverageCost)
                                   : "—"}
                               </strong>
-                              {mapped && (
-                                <small>valor exato da coluna CUSTO</small>
+                              {mapped && info.data.sogamaxAverageCost && (
+                                <small>valor exato da coluna CUS.MÉDIO</small>
                               )}
                             </td>
                             <td>

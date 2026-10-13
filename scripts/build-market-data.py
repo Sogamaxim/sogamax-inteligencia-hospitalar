@@ -16,6 +16,7 @@ import re
 import runpy
 from collections import Counter, defaultdict
 from difflib import SequenceMatcher
+from io import StringIO
 from pathlib import Path
 
 import pandas as pd
@@ -53,6 +54,7 @@ def parse_args():
     parser.add_argument("--presentations")
     parser.add_argument("--presentation-fallback-json")
     parser.add_argument("--prices", required=True)
+    parser.add_argument("--costs")
     parser.add_argument("--previous-market-data")
     parser.add_argument("--period", required=True)
     parser.add_argument("--unit-map", required=True)
@@ -155,6 +157,53 @@ def main():
     for column in ("CUSTO", "GRUPO"):
         if column not in prices:
             prices[column] = None
+    prices["CUSTO_MEDIO"] = None
+    prices["ULTIMO_CUSTO_ENTRADA"] = None
+
+    cost_rows = 0
+    costs_by_id = {}
+    if args.costs:
+        cost_source = Path(args.costs)
+        source_text = cost_source.read_text(encoding="utf-8", errors="replace")
+        cost_table = pd.read_html(
+            StringIO(source_text), thousands=None, decimal=","
+        )[0]
+        cost_columns = [
+            "ID", "EAN", "UN", "DESCRICAO", "MARCA", "EMBALAGEM", "GRUPO",
+            "FAMILIA", "ESTOQUE", "CURVA", "ULTIMA_COMPRA_DATA", "NOTA",
+            "DIAS_ULTIMA_COMPRA", "QT_ULTIMA_COMPRA", "VLR_ULTIMA_COMPRA",
+            "FORNECEDOR_ULTIMA_COMPRA", "QT_CAIXA", "BLOQUEIO", "TOTAL_ESTOQUE",
+            "CUSTO", "CUSTO_MEDIO", "TOTAL_CUSTO", "FABRICA_17", "FABRICA_18",
+            "FABRICA_22", "FORNECEDOR_ID", "FORNECEDOR_FABRICANTE", "FANTASIA",
+        ]
+        if len(cost_table.columns) != len(cost_columns):
+            raise ValueError(
+                f"Tabela de custos com {len(cost_table.columns)} colunas; esperadas {len(cost_columns)}"
+            )
+        cost_table.columns = cost_columns
+
+        def cost_number(value):
+            text = str(value).strip()
+            if not text or text.lower() == "nan":
+                return None
+            if "," in text:
+                text = text.replace(".", "").replace(",", ".")
+            try:
+                return float(text)
+            except ValueError:
+                return None
+
+        for _, cost_row in cost_table.iterrows():
+            product_id = cost_number(cost_row["ID"])
+            if product_id is None:
+                continue
+            costs_by_id[int(product_id)] = {
+                "cost": cost_number(cost_row["CUSTO"]),
+                "average_cost": cost_number(cost_row["CUSTO_MEDIO"]),
+                "last_purchase_cost": cost_number(cost_row["VLR_ULTIMA_COMPRA"]),
+                "last_purchase_date": clean_text(cost_row["ULTIMA_COMPRA_DATA"]),
+            }
+        cost_rows = len(cost_table)
 
     previous_by_id = {}
     if args.previous_market_data:
@@ -177,6 +226,25 @@ def main():
             else None
         )
 
+    if costs_by_id:
+        prices["CUSTO"] = prices.apply(
+            lambda row: costs_by_id.get(int(row["ID"]), {}).get("cost")
+            if pd.notna(row["ID"])
+            and costs_by_id.get(int(row["ID"]), {}).get("cost") is not None
+            else row["CUSTO"],
+            axis=1,
+        )
+        prices["CUSTO_MEDIO"] = prices["ID"].map(
+            lambda value: costs_by_id.get(int(value), {}).get("average_cost")
+            if pd.notna(value)
+            else None
+        )
+        prices["ULTIMO_CUSTO_ENTRADA"] = prices["ID"].map(
+            lambda value: costs_by_id.get(int(value), {}).get("last_purchase_cost")
+            if pd.notna(value)
+            else None
+        )
+
     existing_presentations = {}
     presentations_path = (
         Path(args.presentation_fallback_json)
@@ -190,7 +258,7 @@ def main():
     if args.presentations:
         presentations = pd.read_excel(args.presentations)
         catalog = presentations.merge(
-            prices[["ID", "EAN", "DESCRICAO", "MARCA", "VALOR", "CUSTO", "GRUPO"]],
+            prices[["ID", "EAN", "DESCRICAO", "MARCA", "VALOR", "CUSTO", "CUSTO_MEDIO", "ULTIMO_CUSTO_ENTRADA", "GRUPO"]],
             left_on="Id",
             right_on="ID",
             how="left",
@@ -306,6 +374,18 @@ def main():
             full_cost = (
                 float(selected["CUSTO"]) if pd.notna(selected["CUSTO"]) else None
             )
+            average_cost = (
+                float(selected["CUSTO_MEDIO"])
+                if pd.notna(selected["CUSTO_MEDIO"])
+                and float(selected["CUSTO_MEDIO"]) > 0
+                else None
+            )
+            last_purchase_cost = (
+                float(selected["ULTIMO_CUSTO_ENTRADA"])
+                if pd.notna(selected["ULTIMO_CUSTO_ENTRADA"])
+                and float(selected["ULTIMO_CUSTO_ENTRADA"]) > 0
+                else None
+            )
             unit_price = full_price / presentation
             unit_cost = full_cost / presentation if full_cost is not None else 0
             candidates = exact_groups[norm(standard_description)]
@@ -320,6 +400,8 @@ def main():
                 evidence.append(
                     "Custo não informado na tabela recebida; CMV indisponível"
                 )
+            elif int(selected["Id"]) in costs_by_id:
+                evidence.append("Custo atualizado pela tabela de estoque no mesmo ID Sogamax")
             elif int(selected["Id"]) in previous_by_id:
                 evidence.append("Custo anterior preservado pelo mesmo ID Sogamax")
             if resolution == "semantic":
@@ -332,9 +414,8 @@ def main():
             product = {
                 "sogamaxPrice": round(unit_price, 6),
                 "sogamaxCost": round(unit_cost, 6),
-                # The official price table has no last-purchase-cost column.
-                # Never fabricate it by copying the average cost.
-                "lastPurchaseCost": None,
+                "sogamaxAverageCost": round(average_cost, 6) if average_cost is not None else None,
+                "lastPurchaseCost": round(last_purchase_cost, 6) if last_purchase_cost is not None else None,
                 "sogamaxProductId": int(selected["Id"]),
                 "sogamaxPresentation": presentation,
                 "sogamaxBrand": clean_text(selected["MARCA"]),
@@ -435,6 +516,7 @@ def main():
             "market_csv": Path(args.market_csv).name,
             "mapping": Path(args.mapping).name,
             "prices": Path(args.prices).name,
+            "costs": Path(args.costs).name if args.costs else None,
             "presentations": (
                 Path(args.presentations).name
                 if args.presentations
@@ -453,6 +535,10 @@ def main():
             "sogamax_presentation_rows": int(len(presentations)),
             "sogamax_cost_rows_from_previous_id": int(
                 prices["ID"].isin(previous_by_id).sum()
+            ),
+            "sogamax_cost_source_rows": int(cost_rows),
+            "sogamax_price_ids_with_cost_source": int(
+                prices["ID"].isin(costs_by_id).sum()
             ),
             "status": dict(status_counts),
             "resolution": dict(resolution_counts),

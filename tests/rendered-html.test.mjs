@@ -160,9 +160,10 @@ test("uses only selected MedicalVM offers for demand and shows the official bran
     source,
     /info\.data\.sogamaxFullCost \?\?[\s\S]*info\.data\.sogamaxCost/,
   );
-  assert.match(source, /não disponível na tabela oficial/);
-  assert.match(source, /valor exato da coluna CUSTO/);
-  assert.doesNotMatch(source, /money\(info\.data\.lastPurchaseCost\)/);
+  assert.match(source, /valor exato da coluna VLR ÚLT\.COMPRA/);
+  assert.match(source, /valor exato da coluna CUS\.MÉDIO/);
+  assert.match(source, /money\(info\.data\.lastPurchaseCost\)/);
+  assert.match(source, /money\(info\.data\.sogamaxAverageCost\)/);
   assert.equal(source.match(/<th>Regra aplicada<\/th>/g)?.length, 2);
   assert.doesNotMatch(source, /<th>Preço após conversão<\/th>/);
   assert.doesNotMatch(source, /<th>CMV após conversão<\/th>/);

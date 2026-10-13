@@ -18,19 +18,28 @@
       "rows": 5055,
       "columns": ["ID", "EAN", "DESCRICAO", "MARCA", "VALOR"]
     },
+    "sogamaxCosts": {
+      "file": "xls-V0BOzY.xls",
+      "sha256": "01874bc4d7331b58517e0dba6bb2f4b8d58f0ae718e67a949b15fa8b0276192d",
+      "rows": 24950,
+      "matchedPriceIds": 4927,
+      "columnsUsed": ["Id", "Vlr Últ.Compra 10501", "Custo", "Cus.Médio"]
+    },
     "preservedReferenceData": {
       "presentationRowsMatchedByDescription": 4740,
       "costProductIdsMatchedFromPreviousValidatedBase": 512,
-      "note": "A tabela 596 recebida não contém CUSTO nem GRUPO; nenhum custo novo foi inferido."
+      "note": "Apresentações preservadas por descrição/ID. Custos cruzados pela nova tabela de estoque; nenhum valor foi inferido."
     }
   },
   "result": {
-    "marketDataSha256": "bedc500bcb1036706625d4d097bb21f635418da750f542fc9facf5599714a418",
-    "marketDataGzipSha256": "2a8222f23450d470cac1a9fc9187f943eac8e21b0c503589936afbfd92f5d1d8",
+    "marketDataSha256": "b04ee46d1fc8e583836d71248b499a909a1421ebf87fa944ee3a3893486e3a83",
+    "marketDataGzipSha256": "531886fc37cc50d14e7f53a630cf9c1d2d585cff8b5d660b187842fae2c1b273",
     "cleanDescriptions": 6527,
     "standardized": 1347,
-    "standardizedWithCost": 1316,
-    "standardizedWithoutCost": 31,
+    "standardizedWithCost": 1347,
+    "standardizedWithAverageCost": 1342,
+    "standardizedWithLastPurchaseCost": 1205,
+    "standardizedWithoutCost": 0,
     "review": 5180,
     "resolution": {
       "exact": 1219,
