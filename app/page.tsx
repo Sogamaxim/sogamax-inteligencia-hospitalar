@@ -1212,10 +1212,14 @@ function ProductPopup({
       return {
         brand,
         competitor: group.map((offer) => offer.competitor).join(" · "),
+        // A aba Marcas lista todas as marcas ofertadas. Por isso, a demanda
+        // exibida em cada cartão soma todas as quantidades associadas à marca,
+        // mesmo quando a oferta não foi a vencedora do lote.
         demand: group.reduce(
-          (sum, offer) => sum + (offer.selected ? offer.quantity : 0),
+          (sum, offer) => sum + Math.max(offer.quantity, 0),
           0,
         ),
+        baseUnit: group[0]?.baseUnit ?? offers[0]?.baseUnit ?? "Unidade",
       };
     })
     .sort((a, b) => b.demand - a.demand);
@@ -1516,7 +1520,7 @@ function ProductPopup({
                       <dt>Demanda convertida</dt>
                       <dd>
                         {brand.demand.toLocaleString("pt-BR")}{" "}
-                        {offers[0]?.baseUnit}
+                        {brand.baseUnit}
                       </dd>
                     </div>
                   </dl>

@@ -336,6 +336,20 @@ test("uses only selected MedicalVM offers for demand and shows the official bran
   assert.match(source, /oferta\(s\) da própria Sogamax/);
 });
 
+test("shows demand for every brand from all offers associated with that brand", async () => {
+  const source = await readFile(
+    new URL("../app/page.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(
+    source,
+    /demand: group\.reduce\([\s\S]*sum \+ Math\.max\(offer\.quantity, 0\)/,
+  );
+  assert.match(source, /baseUnit: group\[0\]\?\.baseUnit/);
+  assert.match(source, /\{brand\.baseUnit\}/);
+});
+
 test("does not treat inhaler doses as commercial package quantity", async () => {
   const root = new URL("../", import.meta.url);
   const marketData = await readMarketData(root);
